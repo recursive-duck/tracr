@@ -4,6 +4,13 @@
 
 ## In Progress
 
+- ci-node24: CI actions target the deprecated Node 20 runtime, so every job logs a warning [bugfix] #ci #github #actions
+
+  Run 41593768525 warned for `actions/checkout@11d5960` (v4) and `astral-sh/setup-uv@d0cc045` (v6), both `using: node20`.
+  Pinned to checkout v7.0.1 `3d3c42e` and setup-uv v10.3.3 `68559e9`, both `using: node24`; the inputs we use still exist.
+  Release notes v5-v7 and v7-v10: no break for our inputs. setup-uv v9 stops pruning the cache, so cache usage may grow.
+  Open until a CI run on GitHub shows no Node 20 annotation.
+
 ## Done
 
 - repo-analysis: Understand tracr and verify suspected issues by measurement `9ce2b8c` [experiment] #analysis #compiler #baseline

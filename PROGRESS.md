@@ -79,3 +79,10 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Why:** each call made an n x n matrix to keep one row, once per hidden unit, so compile cost grew as n^3. 82% of a 14 s compile went there.
 - **How:** `vector_from_basis_direction` in `bases.py` fills a zero vector and sets one entry.
 - **Result:** compile 15.7 -> 1.11 s at length 14 (3,241 hidden). Length 20 (12,973 hidden) went from not finishing in minutes to 2.4 s.
+
+## CI on Node 24 (2026-11-03)
+
+- **What:** the test workflow now pins `actions/checkout` v7.0.1 and `astral-sh/setup-uv` v10.3.3.
+- **Why:** the old pins (v4 and v6) declared the Node 20 runtime, which GitHub deprecated, so every job logged a warning.
+- **How:** both new pins are full commit SHAs whose `action.yml` declares node24. The inputs we pass are unchanged.
+- **Result:** not yet run on GitHub.

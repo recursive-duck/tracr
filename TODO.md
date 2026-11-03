@@ -5,6 +5,8 @@
 
 ## In Progress
 
+- ci-node24: CI actions target the deprecated Node 20 runtime, so every job logs a warning [bugfix] #ci #github #actions
+
 ## Done
 
 - repo-analysis: Understand tracr and verify suspected issues by measurement `9ce2b8c` [experiment] #analysis #compiler #baseline
