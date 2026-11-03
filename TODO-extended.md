@@ -38,15 +38,24 @@
 
   Worker C leftover. The window select and code x offset key/query tables dominate lib_copy's trimmed params and grow linearly with max_seq_len (largest tested 373).
 
+- bit-mlp-width: Binary MLPs keep one hidden unit per input value, so params still grow ~V^1.1; make them log-width @bit-encoding [perf] #mlp #encoding #scaling
+
+  Worker A leftover. Residual width is logarithmic (d_model exponent ~0.14) but MLP hidden width is still m per Map. Fitted from only 2 sizes (V=256, 1,024).
+
+- bit-probe-4096: Add binary-only V=N=4,096 rows to the bit_encoding probe; one-hot agg_eq ran 22 min without finishing @bit-encoding [experiment] #encoding #probe #scaling
+
+  Worker A leftover. Run experiments/bit_encoding with sizes=[4096], binary only. Also write experiments/bit_encoding/summary.md (the worker's write was blocked by the harness; the explanation is in run.log).
+
 ## In Progress
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
 
-  - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
-
-    Worker A. New rasp encoding (bits), basis inference, embed/unembed, MLP read/write of bit values. Probe EQ at V=N in {256, 1,024, 4,096} vs one-hot: dims, params, compile time, compiled vs RASP.
 
 ## Done
+
+- bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm `2873d13` `b3da568` `5990e8c` [feature] #encoding #residual #compiler
+
+  Worker A. rasp.binary(sop): ceil(log2 m) +-1 dims instead of m one-hot. Select/Aggregate/SelectorWidth with EQ only. At V=N=1,024: trimmed params 18,902,026 -> 66,976 (282x) for agg_eq; 0/200 RASP mismatches in all 12 rows. V=4,096 unfinished, see @bit-probe-4096, @bit-mlp-width.
 
 - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding `b9af7c2` [feature] #copy #ids #attention
 

@@ -11,13 +11,16 @@
 - pack-rasp-rerun: Rerun the full pack report with the vs-RASP column; only the smoke grid ran @scale-check [experiment] #verification #packing #reports
 - const-sop: Numerical constant SOp on the existing `one` direction; drops the `ones` Map MLP layer @exact-copy [perf] #compiler #mlp #layers
 - marker-window: Nearest-preceding-marker select without one-hot indices, so copy scales to 1M context @exact-copy [feature] #attention #positions #scaling
+- bit-mlp-width: Binary MLPs keep one hidden unit per input value, so params still grow ~V^1.1; make them log-width @bit-encoding [perf] #mlp #encoding #scaling
+- bit-probe-4096: Add binary-only V=N=4,096 rows to the bit_encoding probe; one-hot agg_eq ran 22 min without finishing @bit-encoding [experiment] #encoding #probe #scaling
 
 ## In Progress
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
-  - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
 
 ## Done
+
+- bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm `2873d13` `b3da568` `5990e8c` [feature] #encoding #residual #compiler
 
 - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding `b9af7c2` [feature] #copy #ids #attention
 

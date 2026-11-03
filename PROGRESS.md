@@ -183,3 +183,23 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Result:** exhaustive at k <= 3, S = 3, base 2: 0 mismatches in 11,562 sequences. Probe (22 configs, k and S each 1..32, base 10, 109 s): **0 wrong of 19,502 copied tokens**; copy-head key+query dims one-hot -> binary **514 -> 18 (28.6x) at k=8, S=32** and **258 -> 16 (16.1x) at k=32, S=4**; total trimmed params 11,959,332 -> 10,334,817 (1.2x) and 5,841,088 -> 4,646,622 (1.3x). 6-8 layers, about log2 S + log2 k heads. Suite 6,135 passed, 1 xfailed.
 - **Limits:** largest max_seq_len 373; the window select reads one-hot indices, so size grows linearly with context (@marker-window). Not causal, not trained, strict input layout (others rejected by check_layout). Large configs checked on random inputs, not exhaustively.
 - **Report:** `experiments/exact_copy/summary.md`, `experiments/exact_copy/exact_copy.png`.
+
+## Binary (bit-coded) encoding for S-Ops (`2873d13`, `b3da568`, `5990e8c`, 2026-11-03 14:00, worker A)
+
+- **What:** `rasp.binary(sop)` stores a value with m possible values in ceil(log2 m) +-1 dims instead of m one-hot dims. Works for token/index embedding, Map/SequenceMap in and out, Aggregate and SelectorWidth with Select(EQ), and model output. The validator rejects other predicates, mixed binary/one-hot Selects and tokens with two encodings. 56 new tests.
+- **Why:** at vocab 100-250k, one-hot residual streams and attention tables are too wide; bits grow with log V.
+- **How:** EQ attention scores are a sum over bits of +-1 agreements, so only exact matches reach the top score; S-Ops linked by a Select or Aggregate share one code (basis inference); new binary MLP blocks read and write +-1 bits.
+- **Result:** trimmed (shrink, reuse off), one-hot -> binary, 200 random inputs per row:
+
+  | V=N | program | d_model ↓ | params ↓ | compile s ↓ |
+  |---|---|---|---|---|
+  | 256 | agg_eq | 770 -> 26 | 1,186,570 -> 14,274 | 2.01 -> 2.17 |
+  | 256 | map_lookup | 410 -> 17 | 337,430 -> 17,459 | 1.67 -> 1.49 |
+  | 256 | hist | 516 -> 20 | 1,062,444 -> 31,260 | 2.47 -> 2.03 |
+  | 1,024 | agg_eq | **3,074 -> 32 (96x)** | **18,902,026 -> 66,976 (282x)** | 13.02 -> 1.66 |
+  | 1,024 | map_lookup | **1,668 -> 21 (79x)** | **5,569,452 -> 86,079 (65x)** | 3.02 -> 1.74 |
+  | 1,024 | hist | **2,052 -> 24 (86x)** | **16,832,556 -> 148,200 (114x)** | 17.56 -> 5.64 |
+
+  0/200 mismatches against RASP in all 12 rows. Growth exponent vs V: d_model ~1.0 -> ~0.14, params ~2.0 -> ~1.1. Suite 6,135 passed, 1 xfailed.
+- **Limits:** exponents fitted from 2 sizes; compile times taken at load ~355. No V=4,096 rows (one-hot agg_eq ran 22 min at 6.8 GB unfinished, stopped), see @bit-probe-4096. 0/200 bounds the error rate at about 1.5% (95%), not zero. EQ only; MLP hidden width still grows with V (@bit-mlp-width). No summary.md yet; the explanation is in run.log.
+- **Report:** `experiments/bit_encoding/run.log`, `results.jsonl`, `fits.json`, `bit_encoding.png`.
