@@ -38,6 +38,22 @@ class InferBasesTest(parameterized.TestCase):
           max_seq_len=1,
       )
 
+  @parameterized.parameters(0.5, 1.9, -0.5, 2)
+  def test_numerical_aggregate_rejects_non_binary_values(self, scale):
+    # int() would truncate 0.5, 1.9 and -0.5 into {0, 1}; they must still be
+    # rejected because the mean value set only covers binary inputs.
+    values = rasp.numerical(rasp.Map(lambda x: x * scale, rasp.tokens))
+    select = rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.LEQ)
+    program = rasp.numerical(rasp.Aggregate(select, values, default=0))
+    extracted = rasp_to_graph.extract_rasp_graph(program)
+    with self.assertRaisesRegex(NotImplementedError, "binary"):
+      basis_inference.infer_bases(
+          extracted.graph,
+          extracted.sink,
+          {0, 1},
+          max_seq_len=3,
+      )
+
   @parameterized.parameters(({1, 2, 3}, {2, 3, 4}), ({0, 5}, {1, 6}))
   def test_one_edge(self, vocab, expected_value_set):
     program = rasp.categorical(rasp.Map(lambda x: x + 1, rasp.tokens))

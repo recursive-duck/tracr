@@ -40,19 +40,9 @@ def _numerical_aggregate_value_set(
   set because it is the default output of an Aggregate that selects nothing.
 
   Args:
-    sop_value_set: Values of the averaged S-Op, expected to be a subset of
-      {0, 1}.
+    sop_value_set: Values of the averaged S-Op, a subset of {0, 1}.
     max_seq_len: Maximum number of averaged positions.
   """
-  if not all(x == 0 or x == 1 for x in sop_value_set):
-    # Values such as 0.5 pass the caller's int() check but are not binary, and
-    # the exact enumeration below does not cover them: keep the previous
-    # approximation (value / n) so these programs behave as before.
-    return {
-        value / length
-        for value in sop_value_set
-        for length in range(1, max_seq_len + 1)
-    } | {0}
   has_zero = any(x == 0 for x in sop_value_set)
   has_one = any(x == 1 for x in sop_value_set)
   if has_zero and has_one:
@@ -119,7 +109,9 @@ def infer_bases(
         # TODO(b/255936408): This doesn't work if we average arbitrary values.
         # But most examples only average binary variables.
         sop_value_set = graph.nodes[sop.sop.label][nodes.VALUE_SET]
-        if not {int(x) for x in sop_value_set}.issubset({0, 1}):
+        # Compare values, not int(x): int() truncates, so 0.5 or 1.9 would
+        # pass as binary and get a value set that misses most of their means.
+        if not all(x == 0 or x == 1 for x in sop_value_set):
           raise NotImplementedError(
               "Attention patterns can currently only "
               "average binary variables. Not:", sop_value_set)
