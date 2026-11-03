@@ -11,22 +11,23 @@ Every tracr lib program in config.toml, compiled at vocab size V in [4, 8, 16, 3
 - Differ only at ties of the original (top-2 scores within 1e-05): 0 of 66,880.
 - Numerical programs, output not bitwise equal: 712 of 16,720; largest difference 1.19e-07.
 - Largest difference in categorical output scores (before argmax): 7.63e-06.
+- Against the RASP program itself (rasp.fast_eval; positions where RASP gives None skipped; numerical outputs within 1e-06 + 0 * |RASP|), sequences whose decoded output differs: original **0**, trim **0**, reuse **0**, each of 41,800. Largest numerical error vs RASP: 1.19e-07.
 - Dense params summed over all configs: 3,372,997,994 -> 6,415,696 (trim) -> 5,490,997 (reuse); nonzero weights in the originals: 3,062,016.
 
-| program | configs | median x trim ↑ | median x reuse ↑ | median x d_model ↑ | reuse smaller | largest (V, N) | params before | trim ↓ | reuse ↓ | nonzero |
-|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
-| length | 16 | 1.9 | 1.9 | 1.46 | 0/16 | (32, 32) | 34,205 | 18,156 | 18,156 | 1,421 |
-| reverse | 16 | 6.7 | 7.3 | 1.97 | 13/16 | (32, 32) | 2,505,135 | 295,815 | 232,263 | 5,903 |
-| hist | 16 | 1.9 | 1.9 | 1.46 | 0/16 | (32, 32) | 34,205 | 18,156 | 18,156 | 429 |
-| sort_unique | 16 | 1.9 | 1.9 | 1.03 | 0/16 | (32, 32) | 81,067 | 51,483 | 51,483 | 1,024 |
-| sort | 16 | 4.3 | 4.6 | 1.23 | 16/16 | (32, 32) | 1,642,655 | 334,572 | 300,940 | 6,236 |
-| sort_freq | 16 | 5.8 | 6.7 | 1.59 | 15/16 | (32, 32) | 3,651,204 | 519,951 | 392,590 | 6,666 |
-| frac_prevs | 16 | 4.5 | 4.4 | 1.80 | 5/16 | (32, 32) | 24,149 | 5,069 | 5,076 | 666 |
-| pair_balance | 16 | 4.2 | 4.2 | 1.67 | 16/16 | (32, 32) | 45,848 | 8,815 | 8,697 | 1,240 |
-| shuffle_dyck2 | 16 | 360.3 | 436.2 | 1.68 | 16/16 | (32, 32) | 893,494,508 | 132,320 | 111,173 | 684,649 |
-| count_less_freq | 16 | 2.3 | 2.3 | 1.65 | 15/16 | (32, 32) | 83,367 | 41,718 | 37,590 | 826 |
+| program | configs | median x trim ↑ | median x reuse ↑ | median x d_model ↑ | reuse smaller | largest (V, N) | params before | trim ↓ | reuse ↓ | nonzero | vs RASP ↓ |
+|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|
+| length | 16 | 1.9 | 1.9 | 1.46 | 0/16 | (32, 32) | 34,205 | 18,156 | 18,156 | 1,421 | 0 |
+| reverse | 16 | 6.7 | 7.3 | 1.97 | 13/16 | (32, 32) | 2,505,135 | 295,815 | 232,263 | 5,903 | 0 |
+| hist | 16 | 1.9 | 1.9 | 1.46 | 0/16 | (32, 32) | 34,205 | 18,156 | 18,156 | 429 | 0 |
+| sort_unique | 16 | 1.9 | 1.9 | 1.03 | 0/16 | (32, 32) | 81,067 | 51,483 | 51,483 | 1,024 | 0 |
+| sort | 16 | 4.3 | 4.6 | 1.23 | 16/16 | (32, 32) | 1,642,655 | 334,572 | 300,940 | 6,236 | 0 |
+| sort_freq | 16 | 5.8 | 6.7 | 1.59 | 15/16 | (32, 32) | 3,651,204 | 519,951 | 392,590 | 6,666 | 0 |
+| frac_prevs | 16 | 4.5 | 4.4 | 1.80 | 5/16 | (32, 32) | 24,149 | 5,069 | 5,076 | 666 | 0 |
+| pair_balance | 16 | 4.2 | 4.2 | 1.67 | 16/16 | (32, 32) | 45,848 | 8,815 | 8,697 | 1,240 | 0 |
+| shuffle_dyck2 | 16 | 360.3 | 436.2 | 1.68 | 16/16 | (32, 32) | 893,494,508 | 132,320 | 111,173 | 684,649 | 0 |
+| count_less_freq | 16 | 2.3 | 2.3 | 1.65 | 15/16 | (32, 32) | 83,367 | 41,718 | 37,590 | 826 | 0 |
 
-x = dense params before / after. d_model is the residual width. "reuse smaller" counts configs where reuse beat trim only; reuse can lose because each erased dim costs two MLP units.
+x = dense params before / after. d_model is the residual width. "reuse smaller" counts configs where reuse beat trim only; reuse can lose because each erased dim costs two MLP units. "vs RASP" sums, over the program's configs, the sequences whose decoded output differs from RASP for the original, trim and reuse.
 
 ## What it means
 
