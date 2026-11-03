@@ -130,7 +130,11 @@ def _get_model_config_and_module_names(
 
   if multi_attn_heads:
     num_heads = max(len(heads) for heads in multi_attn_heads)
-    key_size = max(max(head.w_qk.matrix.shape) for head in heads)
+    # The value and output projections of each head share the width of the
+    # query/key projections, so key_size must also cover the value size.
+    key_size = max(
+        max(*head.w_qk.matrix.shape, head.w_ov.matrix.shape[1])
+        for head in heads)
   else:
     num_heads, key_size = 1, 1
 
