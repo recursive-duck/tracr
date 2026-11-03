@@ -5,10 +5,9 @@
 
 ## In Progress
 
-- ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 56 runs @pack-layout [perf] #ilp #runtime #packing
-
 ## Done
 
+- ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 64 runs @pack-layout `658936b` [perf] #ilp #runtime #packing
 - gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing `3b8c4ad` [perf] #gating #bounds #packing
   - gate-tight-bound: Charge each unit only for other programs' values alive at its layer, one-hot dims bounded by 1 `3b8c4ad` [perf] #bounds #soundness #intervals
   - gate-rebalance: Scale each unit's w1 by 1/c and w2 by c so its largest weights are balanced `3b8c4ad` [perf] #relu #homogeneity #weights

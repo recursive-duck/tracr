@@ -113,3 +113,12 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Result:** **max gate 1.6e+09 -> 8.45e+03 at N=32, 1.945e+08 -> 201 at V=4 N=4 (about 190,000x and 970,000x smaller).** Largest weight 100 (N <= 16) and 128 (N=32). Probe at V=4, N=4: each gate is at most 2.5x the largest input it must cancel on any input. In all 16 configs, widths, mismatches, tie flips, non-bitwise numerical outputs and max differences are identical to before. Suite 5,885 -> 5,889 passed (gates shut on every input of every other task, with and without the one-hot clamp; the one-hot clamp gives smaller gates; rebalancing is bitwise equal).
 - **Limits:** the one-hot clamp trusts that tracr keeps categorical dims in [0, 1]; the soundness test checks this on every input up to length 4, not in general. Gates are still 2x a bound, not the minimum that works.
 - **Report:** `experiments/pack_report/summary.md` (new max weight column), probe script in the session scratchpad.
+
+## Faster packing: 5 s integer-program limit (`658936b`, 2026-11-03 11:05)
+
+- **What:** the integer program that searches for a narrower slot layout now stops after 5 s instead of 60 s (`config.toml` [pack_report] and the `ILP_TIME_LIMIT_S` default).
+- **Why:** it was nearly all of the packing time, up to 356 s per config, and in two full reports it never found a narrower layout than DSatur (0 of 64 runs). A GPU would not help: branch and bound is serial CPU work, and the parts a GPU could speed up (the forward passes) are a small share.
+- **How:** one constant. DSatur and the clique lower bound are unchanged, so the reported gap to the best possible width is still exact.
+- **Result:** **summed pack time 2,108 -> 294 s (7.2x), summed config time 3,711 -> 1,574 s (2.4x)**, wall 657 -> 501 s. Widths are identical in all 160 packs (16 configs x 10 K); 0 decided mismatches before and after. The N=32 configs are now limited by compiling the programs, not packing.
+- **Limits:** the integer program proves DSatur optimal less often (13 -> 8 of 32 runs). A narrower layout that needs more than 5 s of search would be missed; none was found with 60 s either.
+- **Report:** `experiments/pack_report/summary.md`.

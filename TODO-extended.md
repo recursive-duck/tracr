@@ -4,12 +4,13 @@
 
 ## In Progress
 
-- ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 56 runs @pack-layout [perf] #ilp #runtime #packing
-
-  Pack report `3b8c4ad`: the integer program is all of the pack time, 157-356 s per config in 5 of 16 configs, 0 narrower layouts in 24 runs (0 in 32 before).
-  Lower ilp_time_limit_s 60 -> 5 in config.toml and the module default; re-run the report and compare pack_s before -> after.
-
 ## Done
+
+- ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 64 runs @pack-layout `658936b` [perf] #ilp #runtime #packing
+
+  Pack report `3b8c4ad`: the integer program is all of the pack time, 157-356 s per config in 5 of 16 configs, 0 narrower layouts in 32 runs (0 in 32 before).
+  Lower ilp_time_limit_s 60 -> 5 in config.toml and the module default; re-run the report and compare pack_s before -> after.
+  After: summed pack time 2,108 -> 294 s, summed config time 3,711 -> 1,574 s, wall 657 -> 501 s; widths identical in all 160 packs; optimality proofs 13 -> 8 of 32.
 
 - gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing `3b8c4ad` [perf] #gating #bounds #packing
 
