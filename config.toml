@@ -1,0 +1,25 @@
+# Parameters for experiment scripts under experiments/.
+
+[shrink_report]
+programs = ["length", "reverse", "hist", "sort_unique", "sort", "sort_freq",
+            "frac_prevs", "pair_balance", "shuffle_dyck2", "count_less_freq"]
+vocab_sizes = [4, 8, 16, 32]
+max_seq_lens = [4, 8, 16, 32]
+compiler_bos = "BOS"
+# String-vocab programs use these tokens, padded with a0, a1, ... up to V.
+dyck_tokens = ["(", ")", "{", "}"]
+workers = 8
+timeout_s = 900
+# Every input is checked when sum_{n=1..N} V^n is at most this.
+exhaustive_limit = 2000
+# Otherwise this many random sequences, lengths uniform in 1..N.
+samples = 256
+seed = 0
+batch_size = 32
+# A categorical position is a tie when the original's top-2 output scores are
+# closer than this; its argmax is then set by rounding. sort_freq at N=32 has
+# ties up to 1.34e-06 that flip, and decided positions far above this.
+tie_tol = 1e-5
+# Configs with at least this many dense params start first.
+heavy_params = 100_000_000
+out_dir = "experiments/shrink_report"

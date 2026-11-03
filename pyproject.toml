@@ -27,6 +27,9 @@ test = [
     "pytest>=9.2.0,<10",
     "pytest-xdist>=3.8.0,<4",
 ]
+experiments = [
+    "matplotlib>=3.10.0,<4",
+]
 
 [tool.uv]
 # Direct dependencies resolve to their lower bounds, which are the versions the

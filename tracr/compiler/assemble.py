@@ -62,6 +62,10 @@ class AssembledTransformerModel:
   residual_labels: List[str]
   input_encoder: Optional[encoder.Encoder] = None
   output_encoder: Optional[encoder.Encoder] = None
+  # Residual -> output space projection used by the unembedding, [D, D_out].
+  unembed_matrix: Optional[np.ndarray] = None
+  categorical_output: bool = True
+  pad_token: Optional[int] = None
 
   def apply(self, tokens: List[bases.Value]) -> AssembledTransformerModelOutput:
     """Returns output from running the model on a set of input tokens."""
@@ -343,4 +347,8 @@ def assemble_craft_model(
       params=params,
       model_config=model_config,
       residual_labels=residual_labels,
+      unembed_matrix=vectorspace_fns.project(residual_space,
+                                             output_space).matrix,
+      categorical_output=categorical_output,
+      pad_token=pad_token,
   )
