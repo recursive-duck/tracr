@@ -1,0 +1,11 @@
+timing ['sort', 'hist'] at N in [8, 32, 128, 512], vocab 32, at least 2.0 s and 3 reps per timing, one core
+program     N  batch  evaluate/s↑     fast/s↑  speedup↑  eval_n   fast_n  equal
+sort        8  4,096     12,652.1   187,380.0       15x  25,305  376,832   True
+sort       32  4,096      1,083.6    36,720.5       34x   2,168   73,728   True
+sort      128  1,024         75.3     3,521.3       47x     151    7,168   True
+sort      512     64          4.7       254.7       54x      10      512   True
+hist        8  4,096     67,678.1   375,978.9        6x 135,357  757,760   True
+hist       32  4,096      4,361.8    87,336.4       20x   8,724  176,128   True
+hist      128  1,024        290.3     9,886.4       34x     581   20,480   True
+hist      512     64         17.4       973.1       56x      35    1,984   True
+wrote /Users/unsalgokdag/git/professional/tracr/.claude/worktrees/agent-a6eca118ea929ab90/experiments/fast_eval_bench/results.json

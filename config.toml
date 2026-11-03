@@ -20,6 +20,12 @@ batch_size = 32
 # closer than this; its argmax is then set by rounding. sort_freq at N=32 has
 # ties up to 1.34e-06 that flip, and decided positions far above this.
 tie_tol = 1e-5
+# Decoded outputs are also checked against RASP (rasp.fast_eval). A numerical
+# output matches when |output - RASP| <= rasp_atol + rasp_rtol * |RASP|.
+# float32 originals are within 4.4e-08 of RASP on frac_prevs and pair_balance
+# (V=8, N=32); the smallest real gap between fractions at N=32 is about 1e-3.
+rasp_atol = 1e-6
+rasp_rtol = 0.0
 # Configs with at least this many dense params start first.
 heavy_params = 100_000_000
 out_dir = "experiments/shrink_report"
@@ -116,3 +122,17 @@ bytes_per_param = 4
 # Ratios at least this large are bold in summary.md.
 bold_ratio = 3.0
 out_dir = "experiments/bit_arith"
+
+[fast_eval_bench]
+# rasp.evaluate vs rasp.fast_eval.evaluate_batch, inputs per second.
+programs = ["sort", "hist"]
+seq_lens = [8, 32, 128, 512]
+vocab_size = 32
+# fast_eval batch: about this many selector entries (batch * N * N), capped.
+batch_elements = 16_777_216
+max_batch = 4096
+# Each timing repeats until at least this long, and runs at least min_reps.
+min_time_s = 2.0
+min_reps = 3
+seed = 0
+out_dir = "experiments/fast_eval_bench"

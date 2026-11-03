@@ -1,0 +1,127 @@
+{
+ "config": {
+  "programs": [
+   "sort",
+   "hist"
+  ],
+  "seq_lens": [
+   8,
+   32,
+   128,
+   512
+  ],
+  "vocab_size": 32,
+  "batch_elements": 16777216,
+  "max_batch": 4096,
+  "min_time_s": 2.0,
+  "min_reps": 3,
+  "seed": 0,
+  "out_dir": "experiments/fast_eval_bench"
+ },
+ "rows": [
+  {
+   "prog": "sort",
+   "N": 8,
+   "batch": 4096,
+   "eval_inputs": 25305,
+   "eval_s": 2.000055540993344,
+   "eval_per_s": 12652.1486435482,
+   "fast_inputs": 376832,
+   "fast_s": 2.011057958006859,
+   "fast_per_s": 187379.98002477997,
+   "equal": true,
+   "speedup": 14.810131093451227
+  },
+  {
+   "prog": "sort",
+   "N": 32,
+   "batch": 4096,
+   "eval_inputs": 2168,
+   "eval_s": 2.0007775829872116,
+   "eval_per_s": 1083.578713813417,
+   "fast_inputs": 73728,
+   "fast_s": 2.0078182499855757,
+   "fast_per_s": 36720.455151022594,
+   "equal": true,
+   "speedup": 33.8881289221648
+  },
+  {
+   "prog": "sort",
+   "N": 128,
+   "batch": 1024,
+   "eval_inputs": 151,
+   "eval_s": 2.004272582998965,
+   "eval_per_s": 75.33905381974583,
+   "fast_inputs": 7168,
+   "fast_s": 2.035588708007708,
+   "fast_per_s": 3521.340028956801,
+   "equal": true,
+   "speedup": 46.73990248645627
+  },
+  {
+   "prog": "sort",
+   "N": 512,
+   "batch": 64,
+   "eval_inputs": 10,
+   "eval_s": 2.130838125012815,
+   "eval_per_s": 4.6929890556279865,
+   "fast_inputs": 512,
+   "fast_s": 2.0105822919867933,
+   "fast_per_s": 254.65259593729832,
+   "equal": true,
+   "speedup": 54.26234600566787
+  },
+  {
+   "prog": "hist",
+   "N": 8,
+   "batch": 4096,
+   "eval_inputs": 135357,
+   "eval_s": 2.000011916999938,
+   "eval_per_s": 67678.09674006267,
+   "fast_inputs": 757760,
+   "fast_s": 2.0154323340102565,
+   "fast_per_s": 375978.8841395773,
+   "equal": true,
+   "speedup": 5.555399785895768
+  },
+  {
+   "prog": "hist",
+   "N": 32,
+   "batch": 4096,
+   "eval_inputs": 8724,
+   "eval_s": 2.0001113749749493,
+   "eval_per_s": 4361.757104705865,
+   "fast_inputs": 176128,
+   "fast_s": 2.0166619169758633,
+   "fast_per_s": 87336.40404342896,
+   "equal": true,
+   "speedup": 20.023215861608254
+  },
+  {
+   "prog": "hist",
+   "N": 128,
+   "batch": 1024,
+   "eval_inputs": 581,
+   "eval_s": 2.001181125000585,
+   "eval_per_s": 290.32854284982835,
+   "fast_inputs": 20480,
+   "fast_s": 2.07152391699492,
+   "fast_per_s": 9886.441489755787,
+   "equal": true,
+   "speedup": 34.05259914409973
+  },
+  {
+   "prog": "hist",
+   "N": 512,
+   "batch": 64,
+   "eval_inputs": 35,
+   "eval_s": 2.0060017500072718,
+   "eval_per_s": 17.4476418078265,
+   "fast_inputs": 1984,
+   "fast_s": 2.038886624999577,
+   "fast_per_s": 973.0800995373695,
+   "equal": true,
+   "speedup": 55.77143950197753
+  }
+ ]
+}
