@@ -2,7 +2,37 @@
 
 ## Backlog
 
+- bit-count: Exact counting that outputs bits, without N decode units or 1/N^2 resolution @scale-to-llm [experiment] #counting #precision #research
+
+  Open problem; selector width needs about N units and weights near 1e12 at N=1M.
+
+- compiler-symbolic: Symbolic value sets and vectorized matrix building; Python loops are O(m) to O(m^2) per op @scale-to-llm [perf] #compiler #runtime #scaling
+
+  After bit-encoding fixes the shapes.
+
+- llm-shapes: RMSNorm-safe codes, RoPE positions, uniform head size, bf16 audit @scale-to-llm [feature] #architecture #precision #llm
+
+  Depends on the target choice (module inside an LLM / standalone / training init), still open.
+
 ## In Progress
+
+- scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
+
+  - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
+
+    Worker A. New rasp encoding (bits), basis inference, embed/unembed, MLP read/write of bit values. Probe EQ at V=N in {256, 1,024, 4,096} vs one-hot: dims, params, compile time, compiled vs RASP.
+
+  - bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm [perf] #attention #sort #bits
+
+    Worker B. #(k<q) = sum_j #(same bits above j, k_j=0) when q_j=1; RASP check 2,000 inputs at m=16 had 0 mismatches. Works on today's compiler with categorical bit Maps. New module tracr/compiler/lib_bits.py. Measure vs current make_sort at N=8, V in {32, 64, 128, 256}.
+
+  - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm [feature] #mlp #arithmetic #bits
+
+    Worker C. Ripple-carry adder, increment, compare over lists of 2-valued S-ops. New module tracr/compiler/lib_arith.py. Measure units/layers vs a categorical SequenceMap adding two values of width w = 4..10 bits.
+
+  - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm [feature] #verification #evaluator #reports
+
+    Worker D. New module tracr/rasp/fast_eval.py (numpy, batched). Reports add a mism-vs-RASP column. Closes the leftover from fix-logit-scale.
 
 ## Done
 

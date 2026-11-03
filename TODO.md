@@ -2,9 +2,17 @@
 
 ## Backlog
 
+- bit-count: Exact counting that outputs bits, without N decode units or 1/N^2 resolution @scale-to-llm [experiment] #counting #precision #research
+- compiler-symbolic: Symbolic value sets and vectorized matrix building; Python loops are O(m) to O(m^2) per op @scale-to-llm [perf] #compiler #runtime #scaling
+- llm-shapes: RMSNorm-safe codes, RoPE positions, uniform head size, bf16 audit @scale-to-llm [feature] #architecture #precision #llm
 
 ## In Progress
 
+- scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
+  - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
+  - bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm [perf] #attention #sort #bits
+  - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm [feature] #mlp #arithmetic #bits
+  - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm [feature] #verification #evaluator #reports
 
 ## Done
 
