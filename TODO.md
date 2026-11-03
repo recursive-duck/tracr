@@ -5,8 +5,11 @@
 
 ## In Progress
 
+
 ## Done
 
+- split-pair-compare: Sort by two counts instead of one comparison on a 1,024-value pair key; AND of Selects compiles as one head @ilp-packing `bc31d24` `1402531` [perf] #sort #attention #residual
+- fix-logit-scale: Attention divides logits by sqrt(key_size) uncorrected, so sort at V=N=32 is wrong on 81% of inputs `5d345a6` [bugfix] #compiler #attention #soundness
 - merge-shared: Merge identical computations across packed programs? No-go: repeats save at most 6% of units, no width @ilp-packing [experiment] #dedup #packing #probe
 - ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 64 runs @pack-layout `658936b` [perf] #ilp #runtime #packing
 - gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing `3b8c4ad` [perf] #gating #bounds #packing

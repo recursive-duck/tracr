@@ -122,3 +122,28 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Result:** **summed pack time 2,108 -> 294 s (7.2x), summed config time 3,711 -> 1,574 s (2.4x)**, wall 657 -> 501 s. Widths are identical in all 160 packs (16 configs x 10 K); 0 decided mismatches before and after. The N=32 configs are now limited by compiling the programs, not packing.
 - **Limits:** the integer program proves DSatur optimal less often (13 -> 8 of 32 runs). A narrower layout that needs more than 5 s of search would be missed; none was found with 60 s either.
 - **Report:** `experiments/pack_report/summary.md`.
+
+## Attention logits divided by sqrt(key_size) (`5d345a6`, 2026-11-03 11:20)
+
+- **What:** the assembler multiplies every query matrix by sqrt(key_size), so compiled attention logits equal 100 x the craft score again.
+- **Why:** found while checking a smaller sort against RASP: compiled lib `sort` at V=N=32 gave the wrong answer on 242 of 300 random inputs, `sort_freq` on 232 (0 at N <= 16). The attention layer divides logits by sqrt(key_size) and nothing undid it. The compiler's sharpness factor of 100 fell to 100 / 32 = 3.1 at key_size 1,024, so the start-of-sequence position kept about half the attention and a count of 0 decoded as 1.
+- **How:** one scale in `assemble.py`. Shrinking and packing copy the same divisor from the model config, so they need no change.
+- **Result:** **wrong answers 242/300 -> 0/300 (sort) and 232/300 -> 0/300 (sort_freq) at V=N=32.** New test: logits equal 100 x the score at vocab 3 and 40 (fails before the fix). The packing rebalance test now compares MLP weights, because the scaled query weights (100 x sqrt(key_size)) are now the largest. Suite 5,895 -> 5,897 passed.
+- **Limits:** the shrink and pack reports compare shrunk or packed models against the compiled original, not against RASP, which is why they could not see this. Query weights now reach 100 x sqrt(key_size).
+
+## AND of Selects compiles as one head (`bc31d24`, 2026-11-03 11:25)
+
+- **What:** `SelectorWidth` and `Aggregate` accept `SelectorAnd` of Selects; before, the validator rejected them.
+- **Why:** sort breaks ties by comparing a (key, position) pair, which has 1,024 values at V=N=32. A "less than" head over m values needs at least m - 1 query/key dims, so that pair alone set the width of every pack. Counting "equal key and earlier position" needs only the two small comparisons at once.
+- **How:** the head scores how many predicates hold, each Select reading its own query and key values. A selected pair scores n. The start-of-sequence position scores n (selector width) or n - 0.5 (aggregate), so a pair missing any predicate (at most n - 1) never wins. `categorical_attn` and `selector_width` take this n as `max_logit`.
+- **Result:** 0 mismatches against RASP on all 120 inputs (V=3, N=4) for selector width and numerical/categorical aggregates with 2 and 3 predicates. Two shared test cases added; the validator still rejects OR, NOT and an AND containing them. Suite 5,889 -> 5,895 passed.
+- **Limits:** only AND; an OR cannot be one head of this kind in general.
+
+## Sort by two counts (`1402531`, 2026-11-03 12:10)
+
+- **What:** `lib.make_sort` (and so `make_sort_freq`) finds each element's target position as #(smaller keys) + #(equal keys at earlier positions), instead of comparing a (key, position) pair key.
+- **Why:** the pair key x + min_key * i / max_seq_len has |keys| x max_seq_len values (1,024 at V=N=32). It is read only by a "less than" head, which needs at least m - 1 query/key dims for m values, so it alone set the width of every pack.
+- **How:** two selector widths, the second over an AND of `Select(keys, keys, EQ)` and `Select(indices, indices, LT)` (`bc31d24`), added by a categorical SequenceMap capped at max_seq_len. Sums the value sets allow but inputs never reach map to max_seq_len, which matches no index, so trimming drops their MLP units (capping at max_seq_len - 1 instead kept them: 560,934 vs 334,572 params at V=N=32). `min_key` is kept for compatibility but unused.
+- **Result:** same outputs: old and new definitions agree under RASP, and the compiled model matches RASP, on all 1,364 inputs at V=4, N=5. At V=N=32 (trimmed): **sort 1,155 -> 196 dims, 5,110,875 -> 334,572 params (15.3x); sort_freq 1,254 -> 263 dims, 6,043,026 -> 519,951 params (11.6x).** **Full 10-program pack at V=N=32: width 1,266 -> 275, params 16,431,414 -> 2,040,225 (8.1x).** **Packed params summed over 16 configs 62,076,515 -> 10,033,942 (6.2x)**; block-diagonal / packed 2.14x -> 4.23x; packed / separate trimmed 1.63x -> 1.56x. Tie flips in both reports 29 -> 0 (they came from the logit-scale bug, `5d345a6`). Suite 5,897 passed.
+- **Limits:** the reports still compare shrunk or packed models with the compiled original, not with RASP. The largest weight after packing rebalance rose from 128 to 1.64e+03 because query matrices now carry 100 x sqrt(key_size). The packed model still costs 1.56x the separate trimmed models.
+- **Report:** `experiments/pack_report/summary.md`, `experiments/shrink_report/summary.md`.

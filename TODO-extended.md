@@ -6,6 +6,22 @@
 
 ## Done
 
+- split-pair-compare: Sort by two counts instead of one comparison on a 1,024-value pair key; AND of Selects compiles as one head @ilp-packing `bc31d24` `1402531` [perf] #sort #attention #residual
+
+  Why: at V=N=32 the packed width (1,266) is set by sort/sort_freq, whose pair key x + i/N has 1,024+ values read only by an LT Select; an LT head on m values needs at least m-1 query/key dims, so binary encoding cannot shrink it.
+  How: target_pos = #(keys < mine) + #(keys == mine and index < mine). The second count is one head over SelectorAnd(Select(EQ), Select(indices LT)) scoring the number of true predicates; BOS scores n - 0.5 (n for selector width), so a pair missing any predicate never wins.
+  Probe (scratchpad split_probe.py), 300 random inputs each, 0 mismatches: sort d_trim 35->28 (N=4), 99->52 (8), 323->100 (16); sort_freq 50->39, 126->71, 374->135. V=N=32 (after @fix-logit-scale): sort 1,155->196 dims, 5,110,875->334,572 params; sort_freq 1,254->263, 6,043,026->519,951. Same layer count.
+  Final lib make_sort (`1402531`) caps target_pos at max_seq_len, not max_seq_len - 1: the unreachable sums then match no index and their MLP units are trimmed (sort V=N=32 trim 560,934 -> 334,572 params). Exhaustive V=4 N=5 (1,364 inputs): old vs new RASP 0 diffs, compiled vs RASP 0.
+  Reports re-run: full pack at V=N=32 width 1,266 -> 275, params 16,431,414 -> 2,040,225; packed params summed over 16 configs 62,076,515 -> 10,033,942, x block 2.14 -> 4.23; tie flips 29 -> 0.
+
+- fix-logit-scale: Attention divides logits by sqrt(key_size) uncorrected, so sort at V=N=32 is wrong on 81% of inputs `5d345a6` [bugfix] #compiler #attention #soundness
+
+  Found by split_probe at V=N=32: compiled lib sort disagreed with RASP on 242/300 inputs, sort_freq on 232/300 (0 at N <= 16), off by +1 in selector widths.
+  Cause: tracr/transformer/attention.py divides logits by sqrt(key_size), the assembler never compensated. Coldness 100 became 100/32 = 3.1 at key_size 1,024, so BOS got about half the attention and width 0 decoded as 1.
+  Fix: assemble.py scales each query matrix by sqrt(key_size); shrinking and packing already copy the same divisor. After: 0/300 and 0/300; target_pos 84/100 -> 0/100 wrong.
+  Test: compiled logits equal 100 x craft score at vocab 3 and 40 (fails before the fix). packing rebalance test now compares MLP weights, since the query weights (100 x sqrt(key_size)) are now the largest.
+  Earlier shrink and pack reports compared shrunk/packed models against the compiled original, not RASP, so they could not see this.
+
 - merge-shared: Merge identical computations across packed programs? No-go: repeats save at most 6% of units, no width @ilp-packing [experiment] #dedup #packing #probe
 
   Probe (scratchpad dup_probe.py, not in repo): fingerprint each RASP node by kind, encoding, function table over its inputs' value sets and its children's fingerprints; equal fingerprints compute equal values.
