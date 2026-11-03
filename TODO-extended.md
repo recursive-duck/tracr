@@ -4,13 +4,6 @@
 
 ## In Progress
 
-- ci-node24: CI actions target the deprecated Node 20 runtime, so every job logs a warning [bugfix] #ci #github #actions
-
-  Run 41593768525 warned for `actions/checkout@11d5960` (v4) and `astral-sh/setup-uv@d0cc045` (v6), both `using: node20`.
-  Pinned to checkout v7.0.1 `3d3c42e` and setup-uv v10.3.3 `68559e9`, both `using: node24`; the inputs we use still exist.
-  Release notes v5-v7 and v7-v10: no break for our inputs. setup-uv v9 stops pruning the cache, so cache usage may grow.
-  Open until a CI run on GitHub shows no Node 20 annotation.
-
 ## Done
 
 - repo-analysis: Understand tracr and verify suspected issues by measurement `9ce2b8c` [experiment] #analysis #compiler #baseline
@@ -86,3 +79,10 @@
   Profile at max_seq_len 14: 11.5 of 14.0 s in `np.zeros`. Now a direct one-hot: profiled compile 14.028 -> 0.235 s.
   Compile wall time: 15.7 -> 1.11 s at max_seq_len 14; 1.19 s at 16; 2.4 s at 20, which did not finish in minutes before.
   The cause was the algorithm, not the core count: compile is single-process, and the test suite already runs on 8 workers.
+
+- ci-node24: CI actions target the deprecated Node 20 runtime, so every job logs a warning `a78d2c5` [bugfix] #ci #github #actions
+
+  Run 41593768525 warned for `actions/checkout@11d5960` (v4) and `astral-sh/setup-uv@d0cc045` (v6), both `using: node20`.
+  Pinned to checkout v7.0.1 `3d3c42e` and setup-uv v10.3.3 `68559e9`, both `using: node24`; the inputs we use still exist.
+  Run 41594629705: 3.11, 3.12, 3.13 green, Node 20 annotations 3 -> 0. Only the Ubuntu 26 label notice is left.
+  setup-uv v9 stops pruning the cache, so cache usage may grow.

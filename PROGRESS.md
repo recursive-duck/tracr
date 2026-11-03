@@ -80,9 +80,9 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **How:** `vector_from_basis_direction` in `bases.py` fills a zero vector and sets one entry.
 - **Result:** compile 15.7 -> 1.11 s at length 14 (3,241 hidden). Length 20 (12,973 hidden) went from not finishing in minutes to 2.4 s.
 
-## CI on Node 24 (2026-11-03)
+## CI on Node 24 (`a78d2c5`, 2026-11-03)
 
 - **What:** the test workflow now pins `actions/checkout` v7.0.1 and `astral-sh/setup-uv` v10.3.3.
 - **Why:** the old pins (v4 and v6) declared the Node 20 runtime, which GitHub deprecated, so every job logged a warning.
 - **How:** both new pins are full commit SHAs whose `action.yml` declares node24. The inputs we pass are unchanged.
-- **Result:** not yet run on GitHub.
+- **Result:** run 41594629705 passed on 3.11, 3.12 and 3.13, with Node 20 warnings 3 -> 0.
