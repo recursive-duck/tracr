@@ -32,8 +32,10 @@ def compute_computational_depth(
 ) -> Dict[int, int]:
   """Returns the computational depth of each node in the graph.
 
-  Given source nodes, runs DFS to tracr the maximum computational depth from all
-    source nodes to every node in the graph.
+  Given source nodes, computes the maximum computational depth from all
+    source nodes to every node in the graph. This is a longest-path pass over
+    the graph in topological order, so it is linear in the size of the graph
+    rather than in the number of paths.
 
   Non-SOp nodes do not count in the depth calculation.
 
@@ -48,21 +50,22 @@ def compute_computational_depth(
     a dictionary mapping all graph nodes to a computational depth
   """
   computational_depth = {}
-
-  def dfs(node_id, depth):
-    if node_id in computational_depth:
-      computational_depth[node_id] = max(depth, computational_depth[node_id])
-    else:
-      computational_depth[node_id] = depth
-
-    for successor_id in graph.successors(node_id):
-      if not isinstance(graph.nodes[successor_id][nodes.EXPR], rasp.SOp):
-        dfs(successor_id, depth)
-      else:
-        dfs(successor_id, depth + 1)
-
   for source_id in sources_ids:
-    dfs(source_id, depth=0)
+    if source_id not in graph:
+      raise nx.NetworkXError(f"The node {source_id} is not in the graph.")
+    computational_depth[source_id] = 0
+
+  for node_id in nx.topological_sort(graph):
+    if node_id not in computational_depth:
+      continue  # Not reachable from any source.
+    depth = computational_depth[node_id]
+    for successor_id in graph.successors(node_id):
+      if isinstance(graph.nodes[successor_id][nodes.EXPR], rasp.SOp):
+        successor_depth = depth + 1
+      else:
+        successor_depth = depth
+      best_so_far = computational_depth.get(successor_id, -1)
+      computational_depth[successor_id] = max(best_so_far, successor_depth)
 
   # ensure any disconnected nodes are given a depth -1
   disconnected_nodes = set(graph.nodes) - set(computational_depth.keys())

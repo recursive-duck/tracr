@@ -191,5 +191,87 @@ class CraftAllocateModulesToLayersTest(parameterized.TestCase):
       self.assertEqual(layer_allocation[node_id], node["expected_result"])
 
 
+class _SuccessorBudgetDiGraph(nx.DiGraph):
+  """A DiGraph that fails the test if successors() is called too often."""
+
+  def __init__(self, successor_budget):
+    super().__init__()
+    self.successor_budget = successor_budget
+    self.successor_calls = 0
+
+  def successors(self, n):
+    self.successor_calls += 1
+    if self.successor_calls > self.successor_budget:
+      raise AssertionError(
+          f"successors() called more than {self.successor_budget} times; "
+          "depth computation is enumerating paths instead of visiting nodes."
+      )
+    return super().successors(n)
+
+
+class ComputeComputationalDepthTest(absltest.TestCase):
+
+  def _diamond_chain(self, levels):
+    """Builds a chain of diamonds with 2**levels paths from node 0 to the end.
+
+    Each level is: prev -> selector -> join, and prev -> sop -> join, where the
+    selector is a non-SOp and the sop is an SOp. The last join has depth
+    2 * levels. Node `orphan` is disconnected and has depth -1.
+    """
+    num_nodes = 1 + 3 * levels + 1
+    graph = _SuccessorBudgetDiGraph(successor_budget=20 * (num_nodes + 1))
+    select = rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.EQ)
+    graph.add_node(0, **{nodes.ID: 0, nodes.EXPR: rasp.tokens})
+    prev = 0
+    next_id = 1
+    for _ in range(levels):
+      selector_id, sop_id, join_id = next_id, next_id + 1, next_id + 2
+      next_id += 3
+      sop = rasp.Map(lambda t: t, rasp.tokens)
+      join = rasp.SequenceMap(lambda a, b: a, sop, rasp.tokens)
+      graph.add_node(selector_id, **{nodes.ID: selector_id, nodes.EXPR: select})
+      graph.add_node(sop_id, **{nodes.ID: sop_id, nodes.EXPR: sop})
+      graph.add_node(join_id, **{nodes.ID: join_id, nodes.EXPR: join})
+      graph.add_edge(prev, selector_id)
+      graph.add_edge(prev, sop_id)
+      graph.add_edge(selector_id, join_id)
+      graph.add_edge(sop_id, join_id)
+      prev = join_id
+    orphan = next_id
+    graph.add_node(orphan, **{nodes.ID: orphan, nodes.EXPR: rasp.indices})
+    return graph, prev, orphan
+
+  def test_diamond_chain_depth_is_linear_and_correct(self):
+    levels = 40
+    graph, last_join, orphan = self._diamond_chain(levels)
+    # Repeating the source (as the old traversal produced) must not change
+    # the result.
+    depth = craft_graph_to_model.compute_computational_depth(
+        graph, [0] * 8
+    )
+
+    self.assertEqual(depth[0], 0)
+    self.assertEqual(depth[last_join], 2 * levels)
+    self.assertEqual(depth[orphan], -1)
+
+  def test_depth_is_maximum_over_paths(self):
+    # 0 -> 1 (SOp) -> 3 (SOp), and 0 -> 2 (non-SOp) -> 3 (SOp).
+    # The longer path through the SOp 1 gives depth 2 to node 3, not 1.
+    graph = nx.DiGraph()
+    select = rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.EQ)
+    graph.add_node(0, **{nodes.ID: 0, nodes.EXPR: rasp.tokens})
+    graph.add_node(1, **{nodes.ID: 1, nodes.EXPR: rasp.tokens})
+    graph.add_node(2, **{nodes.ID: 2, nodes.EXPR: select})
+    graph.add_node(3, **{nodes.ID: 3, nodes.EXPR: rasp.tokens})
+    graph.add_edge(0, 1)
+    graph.add_edge(0, 2)
+    graph.add_edge(1, 3)
+    graph.add_edge(2, 3)
+
+    depth = craft_graph_to_model.compute_computational_depth(graph, [0])
+
+    self.assertEqual(depth, {0: 0, 1: 1, 2: 0, 3: 2})
+
+
 if __name__ == "__main__":
   absltest.main()

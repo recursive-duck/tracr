@@ -66,6 +66,91 @@ class ExtractRaspGraphTest(parameterized.TestCase):
           [rasp.tokens, rasp.indices],
       )
 
+  def test_sources_are_listed_once_in_first_seen_order(self):
+    # `tokens` is reachable along several paths, but must be a source only once.
+    program = rasp.SequenceMap(
+        lambda x, y: x + y,
+        rasp.Map(lambda x: x + 1, rasp.tokens),
+        rasp.SequenceMap(
+            lambda x, y: x * y,
+            rasp.indices,
+            rasp.Map(lambda x: x - 1, rasp.tokens),
+        ),
+    )
+
+    extracted = rasp_to_graph.extract_rasp_graph(program)
+
+    self.assertEqual(
+        [source[nodes.EXPR] for source in extracted.sources],
+        [rasp.tokens, rasp.indices],
+    )
+
+class _BudgetedExpr:
+  """Shared counter: fails the test if too many children reads happen."""
+
+  def __init__(self, budget):
+    self.budget = budget
+    self.reads = 0
+
+  def record_read(self):
+    self.reads += 1
+    if self.reads > self.budget:
+      raise AssertionError(
+          f"children were read more than {self.budget} times; traversal is "
+          "visiting shared expressions once per path."
+      )
+
+
+class _CountedMap(rasp.Map):
+  """A Map whose child reads are counted against a shared budget."""
+
+  def __init__(self, f, inner, counter):
+    super().__init__(f, inner, simplify=False)
+    self._counter = counter
+
+  @property
+  def children(self):
+    self._counter.record_read()
+    return super().children
+
+
+class _CountedSequenceMap(rasp.SequenceMap):
+  """A SequenceMap whose child reads are counted against a shared budget."""
+
+  def __init__(self, f, fst, snd, counter):
+    super().__init__(f, fst, snd)
+    self._counter = counter
+
+  @property
+  def children(self):
+    self._counter.record_read()
+    return super().children
+
+
+class ExtractRaspGraphDiamondTest(absltest.TestCase):
+
+  def test_diamond_chain_visits_each_expression_once(self):
+    # Every path through this chain goes through 2**depth paths to `tokens`,
+    # so a traversal that revisits shared expressions per path would read
+    # children far more than the budget (which is linear in the chain length).
+    depth = 60
+    counter = _BudgetedExpr(budget=50 * depth)
+    x = rasp.Map(lambda t: t % 2, rasp.tokens)
+    for _ in range(depth):
+      x = _CountedSequenceMap(
+          lambda a, b: (a + b) % 2,
+          x,
+          _CountedMap(lambda t: 1 - t, x, counter),
+          counter,
+      )
+
+    extracted = rasp_to_graph.extract_rasp_graph(x)
+
+    self.assertLessEqual(counter.reads, 2 * depth + 1)
+    self.assertLen(extracted.sources, 1)
+    self.assertEqual(extracted.sources[0][nodes.EXPR], rasp.tokens)
+    self.assertEqual(extracted.graph.number_of_nodes(), 2 * depth + 2)
+
 
 if __name__ == "__main__":
   absltest.main()
