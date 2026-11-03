@@ -8,15 +8,17 @@
 - hybrid-train: Frozen compiled modules inside trainable layers; check training leaves them exact @llm-shapes [experiment] #training #modules #exactness
 - bit-count: Exact counting that outputs bits, without N decode units or 1/N^2 resolution @scale-to-llm [experiment] #counting #precision #research
 - compiler-symbolic: Symbolic value sets and vectorized matrix building; Python loops are O(m) to O(m^2) per op @scale-to-llm [perf] #compiler #runtime #scaling
+- pack-rasp-rerun: Rerun the full pack report with the vs-RASP column; only the smoke grid ran @scale-check [experiment] #verification #packing #reports
 
 ## In Progress
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
   - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
-  - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm [feature] #verification #evaluator #reports
   - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
 
 ## Done
+
+- scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm `321d668` `30ee62a` `88e5442` [feature] #verification #evaluator #reports
 
 - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm `c6d16ed` `10b8008` [feature] #mlp #arithmetic #bits
 

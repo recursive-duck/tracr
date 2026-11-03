@@ -26,6 +26,10 @@
 
   After bit-encoding fixes the shapes.
 
+- pack-rasp-rerun: Rerun the full pack report with the vs-RASP column; only the smoke grid ran @scale-check [experiment] #verification #packing #reports
+
+  Worker D leftover. `uv run --extra experiments python experiments/pack_report.py` (timeout 2700) on a quiet machine, then commit outputs. Also: rasp_check runs the original forward twice (shrinking.compare already does); pass its outputs in.
+
 ## In Progress
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
@@ -34,15 +38,15 @@
 
     Worker A. New rasp encoding (bits), basis inference, embed/unembed, MLP read/write of bit values. Probe EQ at V=N in {256, 1,024, 4,096} vs one-hot: dims, params, compile time, compiled vs RASP.
 
-  - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm [feature] #verification #evaluator #reports
-
-    Worker D. New module tracr/rasp/fast_eval.py (numpy, batched). Reports add a mism-vs-RASP column. Closes the leftover from fix-logit-scale.
-
   - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
 
     Worker C (started 2026-11-03 13:40). Exact EQ/copy over bit codes so ids in tool calls are never corrupted. Reuse lib_bits/lib_arith/bit encoding; exhaustive k<=3 digits, <=3 IDs; probe units/params/layers/compile time vs ID length and number of IDs.
 
 ## Done
+
+- scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm `321d668` `30ee62a` `88e5442` [feature] #verification #evaluator #reports
+
+  Worker D. tracr/rasp/fast_eval.py (numpy, batched), 6-56x faster than rasp.evaluate; shrink report 0/41,800 sequences differ from RASP. Full pack report rerun left as @pack-rasp-rerun.
 
 - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm `c6d16ed` `10b8008` [feature] #mlp #arithmetic #bits
 

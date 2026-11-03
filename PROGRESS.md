@@ -165,3 +165,12 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Result:** at w=7 (widest lookup that compiled) lookup -> ripple KPG: **MLP units 16,384 -> 436 (37.6x), trimmed params 16,909,824 -> 718,185 (23.5x), compile 156.9 s -> 4.2 s**, layers 1 -> 11. Lookup stops compiling within 300 s at w=8. Adder cost is linear: 16w-8 units (KPG), 20w-12 (4-row). Kogge-Stone at w=10: 11 layers vs 15 (ripple KPG) and 24 (bits-only ripple). 0 mismatches in 16,016 checks against RASP and integer addition (43 configs, 42 compiled, 1 timeout).
 - **Limits:** only the adder is O(w); the whole model is still about 2^(1.6w) params because inputs and output are one-hot 2^w values (`from_bits` is 2,184 of 2,376 units at w=10). Compile times are from a laptop at load ~380. w >= 5 checks are random samples (102 per config at w=10, cut from 200 by a token cap in config.toml); exhaustive only to w=4.
 - **Report:** `experiments/bit_arith/summary.md`.
+
+## Reports checked against RASP itself (`321d668`, `30ee62a`, `88e5442`, 2026-11-03 13:50, worker D)
+
+- **What:** new `tracr/rasp/fast_eval.py`, a batched numpy evaluator that gives the same outputs as `rasp.evaluate` (92 tests). New `experiments/rasp_check.py` adds a "vs RASP ↓" column to the shrink and pack reports.
+- **Why:** the reports compared shrunk/packed models only with the compiled original, so a compiler bug shared by both (like the logit-scale bug, `5d345a6`) stayed invisible.
+- **How:** whole batches of inputs evaluated per RASP op in numpy; tolerance rasp_atol 1e-6 (float32 originals measured up to 4.4e-08 off RASP). Suite 5,897 -> 6,120 passed, 1 xfailed.
+- **Result:** fast_eval vs rasp.evaluate, inputs/s on one core: sort N=8 12,652 -> 187,380 (15x), **sort N=512 4.7 -> 254.7 (54x)**, hist N=8 67,678 -> 375,979 (6x), **hist N=512 17.4 -> 973 (56x)**; outputs equal in every row. **Shrink report: 0 of 41,800 sequences differ from RASP** for original, trim and reuse models in all 160 configs (largest numerical error 1.19e-07). Pack report smoke grid (V=4, N in {4, 8}): 0 of 5,960 differ.
+- **Limits:** the full pack report was not rerun (laptop load ~380), see @pack-rasp-rerun. Large configs check 256 sampled inputs; positions where RASP gives None are not checked; speedups are single noisy runs. The last push was rebased over a tracking-only commit without re-running the suite.
+- **Report:** `experiments/shrink_report/summary.md`, `experiments/fast_eval_bench.py`.
