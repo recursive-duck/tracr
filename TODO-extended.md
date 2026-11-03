@@ -6,6 +6,13 @@
 
 ## Done
 
+- merge-shared: Merge identical computations across packed programs? No-go: repeats save at most 6% of units, no width @ilp-packing [experiment] #dedup #packing #probe
+
+  Probe (scratchpad dup_probe.py, not in repo): fingerprint each RASP node by kind, encoding, function table over its inputs' value sets and its children's fingerprints; equal fingerprints compute equal values.
+  Repeats found: 7 of 48 blocks (selector widths of length/reverse and hist/sort_freq/count_less_freq; the "(" counting chain of frac_prevs/pair_balance/shuffle_dyck2). All sit at the same layer in every program except one.
+  Repeated share shrinks with size: compiled MLP units 1.11x (V=N=4) -> 1.03x (8) -> 1.01x (16) -> 1.00x (32); output dims 1.15x -> 1.11x -> 1.07x -> 1.04x.
+  At V=N=32 the 205 repeated units are at most 6% of the 3,412 packed units, and the packed width 1,266 is set by sort_freq alone (1,254), so merging small programs' values cannot narrow it.
+
 - ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 64 runs @pack-layout `658936b` [perf] #ilp #runtime #packing
 
   Pack report `3b8c4ad`: the integer program is all of the pack time, 157-356 s per config in 5 of 16 configs, 0 narrower layouts in 32 runs (0 in 32 before).
