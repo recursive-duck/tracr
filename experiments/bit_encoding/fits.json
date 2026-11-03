@@ -1,0 +1,26 @@
+{
+ "compile_s": {
+  "agg_eq/categorical": 1.3465746385961361,
+  "agg_eq/binary": -0.1927352797958345,
+  "map_lookup/categorical": 0.42917231842340453,
+  "map_lookup/binary": 0.11225019516518261,
+  "hist/categorical": 1.4163379729608834,
+  "hist/binary": 0.7352560314179342
+ },
+ "d_model_trim": {
+  "agg_eq/categorical": 0.9985934070542546,
+  "agg_eq/binary": 0.14978014092945371,
+  "map_lookup/categorical": 1.0122117369696093,
+  "map_lookup/binary": 0.15242729076421022,
+  "hist/categorical": 0.9957938800919013,
+  "hist/binary": 0.13151720291689692
+ },
+ "params_trim": {
+  "agg_eq/categorical": 1.9968358795371037,
+  "agg_eq/binary": 1.1151272695547105,
+  "map_lookup/categorical": 2.022437615790355,
+  "map_lookup/binary": 1.1508451949225031,
+  "hist/categorical": 1.992897779337593,
+  "hist/binary": 1.122577882096766
+ }
+}

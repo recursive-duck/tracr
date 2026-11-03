@@ -1,0 +1,31 @@
+bit_encoding: programs=['agg_eq', 'map_lookup', 'hist'] encodings=['categorical', 'binary'] sizes=[256, 1024, 4096] samples=200
+program    enc            V=N  d_model↓  d_trim↓        params↓   params_trim↓ layers↓ compile_s↓ shrink_s  eval_s inputs mism↓ peak_GB
+agg_eq     categorical    256       771      770      1,196,596      1,186,570       1       2.01     0.01     8.4    200     0    0.62
+agg_eq     binary         256        26       26         14,565         14,274       1       2.17     0.00     4.3    200     0    0.58
+map_lookup categorical    256       668      410        553,929        337,430       1       1.67     0.00     3.7    200     0    0.56
+map_lookup binary         256       274       17        283,301         17,459       1       1.49     0.00     3.3    200     0    0.55
+hist       categorical    256       773      516      1,993,309      1,062,444       1       2.47     0.01     7.5    200     0    0.63
+hist       binary         256       276       20        438,004         31,260       1       2.03     0.00     4.0    200     0    0.60
+agg_eq     categorical  1,024     3,075    3,074     18,942,004     18,902,026       1      13.02     0.10    79.4    200     0    1.26
+agg_eq     binary       1,024        32       32         67,333         66,976       1       1.66     0.00     4.6    200     0    0.66
+map_lookup categorical  1,024     2,694    1,668      9,012,077      5,569,452       1       3.02     0.03     8.5    200     0    1.07
+map_lookup binary       1,024     1,046       21      4,294,857         86,079       1       1.74     0.02     6.9    200     0    0.81
+hist       categorical  1,024     3,077    2,052     31,565,917     16,832,556       1      17.56     0.16    95.5    200     0    1.42
+hist       binary       1,024     1,048       24      6,500,734        148,200       1       5.64     0.02     7.6    200     0    0.92
+STOPPED at V=4,096: agg_eq categorical child ran 22 min (6.8 GB RSS) without a row; no V=4,096 rows.
+categorical -> binary (trimmed):
+  agg_eq        256  d_trim 770 -> 26 (29.6x)  params_trim 1,186,570 -> 14,274 (83.1x)  compile 2.01 -> 2.17 s  mism 0/200 -> 0/200
+  map_lookup    256  d_trim 410 -> 17 (24.1x)  params_trim 337,430 -> 17,459 (19.3x)  compile 1.67 -> 1.49 s  mism 0/200 -> 0/200
+  hist          256  d_trim 516 -> 20 (25.8x)  params_trim 1,062,444 -> 31,260 (34.0x)  compile 2.47 -> 2.03 s  mism 0/200 -> 0/200
+  agg_eq      1,024  d_trim 3,074 -> 32 (96.1x)  params_trim 18,902,026 -> 66,976 (282.2x)  compile 13.02 -> 1.66 s  mism 0/200 -> 0/200
+  map_lookup  1,024  d_trim 1,668 -> 21 (79.4x)  params_trim 5,569,452 -> 86,079 (64.7x)  compile 3.02 -> 1.74 s  mism 0/200 -> 0/200
+  hist        1,024  d_trim 2,052 -> 24 (85.5x)  params_trim 16,832,556 -> 148,200 (113.6x)  compile 17.56 -> 5.64 s  mism 0/200 -> 0/200
+log-log slope vs V from 2 sizes (256, 1,024):
+  program    enc          compile_s  d_trim params_trim
+  agg_eq     categorical       1.35    1.00        2.00
+  agg_eq     binary           -0.19    0.15        1.12
+  map_lookup categorical       0.43    1.01        2.02
+  map_lookup binary            0.11    0.15        1.15
+  hist       categorical       1.42    1.00        1.99
+  hist       binary            0.74    0.13        1.12
+plot: /Users/unsalgokdag/git/professional/tracr/.claude/worktrees/agent-ac5ffdea1a4488451/experiments/bit_encoding/bit_encoding.png
