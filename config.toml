@@ -136,3 +136,34 @@ min_time_s = 2.0
 min_reps = 3
 seed = 0
 out_dir = "experiments/fast_eval_bench"
+
+[exact_copy]
+# Compiled exact copy of k-digit IDs (tracr/compiler/lib_copy.py): cost vs
+# ID length k at num_slots = fixed_slots, and vs number of ID slots S at
+# id_len = fixed_id_len. Copy key/query encodings: "binary" (bit codes) and
+# "categorical" (one-hot baseline).
+id_lens = [1, 2, 4, 8, 16, 32]
+fixed_slots = 4
+slot_counts = [1, 2, 4, 8, 16, 32]
+fixed_id_len = 8
+encodings = ["binary", "categorical"]
+# Digit tokens 0..base-1; markers and filler follow (lib_copy.CopyLayout).
+base = 10
+compiler_bos = "BOS"
+compiler_pad = "PAD"
+# Random valid sequences per config (seed + 1000 k + S): 1..S sources,
+# 1..max_calls calls, gaps of 0..max_gap tokens between blocks. All go
+# through the compiled model; the first rasp_samples also through
+# rasp.evaluate (pure-Python, O(N^2) per Select).
+samples = 64
+rasp_samples = 4
+max_calls = 2
+max_gap = 2
+seed = 0
+batch_size = 16
+# One process per config, killed after timeout_s.
+timeout_s = 900
+workers = 3
+# Ratios at least this large are bold in summary.md.
+bold_ratio = 3.0
+out_dir = "experiments/exact_copy"
