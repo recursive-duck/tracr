@@ -2,6 +2,7 @@
 
 ## Backlog
 
+- nary-sum: n-ary linear sum primitive so a sum tree of numerical SOps is one MLP, not log2(n) layers @bitsplit-compare [perf] #compiler #mlp #layers
 - llm-shapes: RMSNorm-safe codes, RoPE positions, uniform head size, bf16 audit @scale-to-llm [feature] #architecture #precision #llm
 - id-codes: ID tokens embed and unembed as fixed bit codes shared with the DB keys; no ID embedding table @scale-to-llm [feature] #ids #encoding #tools
 - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
@@ -13,12 +14,12 @@
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
   - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
-  - bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm [perf] #attention #sort #bits
   - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm [feature] #mlp #arithmetic #bits
   - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm [feature] #verification #evaluator #reports
 
 ## Done
 
+- bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm `f7f7011` [perf] #attention #sort #bits
 - split-pair-compare: Sort by two counts instead of one comparison on a 1,024-value pair key; AND of Selects compiles as one head @ilp-packing `bc31d24` `1402531` [perf] #sort #attention #residual
 - fix-logit-scale: Attention divides logits by sqrt(key_size) uncorrected, so sort at V=N=32 is wrong on 81% of inputs `5d345a6` [bugfix] #compiler #attention #soundness
 - merge-shared: Merge identical computations across packed programs? No-go: repeats save at most 6% of units, no width @ilp-packing [experiment] #dedup #packing #probe

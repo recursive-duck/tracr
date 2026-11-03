@@ -2,6 +2,10 @@
 
 ## Backlog
 
+- nary-sum: n-ary linear sum primitive so a sum tree of numerical SOps is one MLP, not log2(n) layers @bitsplit-compare [perf] #compiler #mlp #layers
+
+  Worker B leftover: make_sort_bits needs 7-8 layers vs 3 because per-level counts are summed pairwise. Letting numerical SOps share one output direction would collapse it.
+
 - llm-shapes: RMSNorm-safe codes, RoPE positions, uniform head size, bf16 audit @scale-to-llm [feature] #architecture #precision #llm
 
   Depends on the target choice (module inside an LLM / standalone / training init), still open.
@@ -34,10 +38,6 @@
 
     Worker A. New rasp encoding (bits), basis inference, embed/unembed, MLP read/write of bit values. Probe EQ at V=N in {256, 1,024, 4,096} vs one-hot: dims, params, compile time, compiled vs RASP.
 
-  - bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm [perf] #attention #sort #bits
-
-    Worker B. #(k<q) = sum_j #(same bits above j, k_j=0) when q_j=1; RASP check 2,000 inputs at m=16 had 0 mismatches. Works on today's compiler with categorical bit Maps. New module tracr/compiler/lib_bits.py. Measure vs current make_sort at N=8, V in {32, 64, 128, 256}.
-
   - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm [feature] #mlp #arithmetic #bits
 
     Worker C. Ripple-carry adder, increment, compare over lists of 2-valued S-ops. New module tracr/compiler/lib_arith.py. Measure units/layers vs a categorical SequenceMap adding two values of width w = 4..10 bits.
@@ -47,6 +47,11 @@
     Worker D. New module tracr/rasp/fast_eval.py (numpy, batched). Reports add a mism-vs-RASP column. Closes the leftover from fix-logit-scale.
 
 ## Done
+
+- bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm `f7f7011` [perf] #attention #sort #bits
+
+  Worker B. #(k<q) = sum_j #(same bits above j, k_j=0) when q_j=1; RASP check 2,000 inputs at m=16 had 0 mismatches. Works on today's compiler with categorical bit Maps. New module tracr/compiler/lib_bits.py. Measure vs current make_sort at N=8, V in {32, 64, 128, 256}.
+
 
 - split-pair-compare: Sort by two counts instead of one comparison on a 1,024-value pair key; AND of Selects compiles as one head @ilp-packing `bc31d24` `1402531` [perf] #sort #attention #residual
 
