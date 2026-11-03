@@ -22,6 +22,7 @@ from typing import Set
 import networkx as nx
 from tracr.compiler import nodes
 from tracr.craft import bases
+from tracr.craft.chamber import binary_mlp
 from tracr.rasp import rasp
 from tracr.utils import errors
 
@@ -102,7 +103,7 @@ def infer_bases(
           out.add(res)
       return out
     elif isinstance(sop, rasp.Aggregate):
-      if rasp.is_categorical(sop):
+      if rasp.is_categorical(sop) or rasp.is_binary(sop):
         # Simply pass on the value set of the underlying S-Op.
         return graph.nodes[sop.sop.label][nodes.VALUE_SET]
       elif rasp.is_numerical(sop):
@@ -119,6 +120,7 @@ def infer_bases(
         return _numerical_aggregate_value_set(sop_value_set, max_seq_len)
     raise ValueError(f"Unsupported S-Op: {sop}")
 
+  binary_labels = []
   for node_id in nx.dfs_postorder_nodes(graph.reverse(), sink[nodes.ID]):
     expr = graph.nodes[node_id][nodes.EXPR]
 
@@ -133,6 +135,48 @@ def infer_bases(
       out_space = bases.VectorSpaceWithBasis.from_values(expr.label, value_set)
     elif rasp.is_numerical(expr):
       out_space = bases.VectorSpaceWithBasis.from_names([expr.label])
+    elif rasp.is_binary(expr):
+      binary_labels.append(expr.label)
+      continue
     else:
       raise ValueError(f"Unsupported S-Op type: {expr.type}")
     graph.nodes[node_id][nodes.OUTPUT_BASIS] = out_space.basis
+
+  if binary_labels:
+    _assign_binary_codes(graph, binary_labels)
+
+
+def _assign_binary_codes(graph: nx.DiGraph, binary_labels) -> None:
+  """Gives every binary S-Op a bit code and its bit directions as basis.
+
+  S-Ops whose bits must agree share one code over the union of their value
+  sets: the query and key of a Select (equality is a dot product of codes) and
+  the input and output of an Aggregate (attention copies the bits).
+  """
+  parent = {label: label for label in binary_labels}
+
+  def find(label):
+    while parent[label] != label:
+      parent[label] = parent[parent[label]]
+      label = parent[label]
+    return label
+
+  def union(a, b):
+    if a in parent and b in parent:
+      parent[find(a)] = find(b)
+
+  for node_id in graph.nodes:
+    expr = graph.nodes[node_id][nodes.EXPR]
+    if isinstance(expr, rasp.Select):
+      union(expr.queries.label, expr.keys.label)
+    elif isinstance(expr, rasp.Aggregate):
+      union(expr.label, expr.sop.label)
+
+  group_values = {}
+  for label in binary_labels:
+    group_values.setdefault(find(label), set()).update(
+        graph.nodes[label][nodes.VALUE_SET])
+  for label in binary_labels:
+    code = binary_mlp.code_from_values(label, group_values[find(label)])
+    graph.nodes[label][nodes.BINARY_CODE] = code
+    graph.nodes[label][nodes.OUTPUT_BASIS] = code.space.basis

@@ -20,11 +20,14 @@ import networkx as nx
 from tracr.compiler import nodes
 from tracr.compiler import validating
 from tracr.craft import bases
+from tracr.craft import transformers
+from tracr.craft.chamber import binary_mlp
 from tracr.craft.chamber import categorical_attn
 from tracr.craft.chamber import categorical_mlp
 from tracr.craft.chamber import numerical_mlp
 from tracr.craft.chamber import selector_width
 from tracr.rasp import rasp
+from tracr.utils import errors
 
 
 def _transform_fun_to_basis_fun(
@@ -42,6 +45,51 @@ def _transform_fun_to_basis_fun(
   return bases_fun
 
 
+def _operand(expr: rasp.SOp, node) -> binary_mlp.Operand:
+  """How an MLP reads or writes the S-Op `expr` (stored at `node`)."""
+  if rasp.is_binary(expr):
+    return binary_mlp.BinaryOperand(node[nodes.BINARY_CODE])
+  space = bases.VectorSpaceWithBasis(node[nodes.OUTPUT_BASIS])
+  if rasp.is_categorical(expr):
+    return binary_mlp.CategoricalOperand(space)
+  return binary_mlp.NumericalOperand(space)
+
+
+def _binary_map_mlp(expr, graph, one_space, mlp_exactness):
+  """MLP for a Map or SequenceMap that reads or writes a binary S-Op."""
+  node = graph.nodes[expr.label]
+  out_op = _operand(expr, node)
+  hidden_name = f"_hidden_{expr.label}_"
+  f = errors.ignoring_arithmetic_errors(expr.f)
+  if isinstance(expr, rasp.Map):
+    inner, inner_node = expr.inner, graph.nodes[expr.inner.label]
+    if rasp.is_numerical(inner):
+      # Discretise to one-hot, then write each one-hot output as its code.
+      code = node[nodes.BINARY_CODE]
+      onehot_space = bases.VectorSpaceWithBasis.from_values(
+          expr.label, code.values)
+      mlp = numerical_mlp.map_numerical_to_categorical_mlp(
+          f=expr.f,
+          input_space=bases.VectorSpaceWithBasis(
+              inner_node[nodes.OUTPUT_BASIS]),
+          output_space=onehot_space,
+          input_value_set=inner_node[nodes.VALUE_SET],
+          one_space=one_space,
+          hidden_name=hidden_name,
+          large_number=mlp_exactness)
+      return binary_mlp.fold_onehot_output(mlp, onehot_space, code)
+    return binary_mlp.lookup_mlp([_operand(inner, inner_node)], out_op, f,
+                                 one_space, hidden_name)
+  fst, snd = expr.fst, expr.snd
+  fst_op = _operand(fst, graph.nodes[fst.label])
+  if fst.label == snd.label:
+    return binary_mlp.lookup_mlp([fst_op], out_op, lambda x: f(x, x),
+                                 one_space, hidden_name)
+  snd_op = _operand(snd, graph.nodes[snd.label])
+  return binary_mlp.lookup_mlp([fst_op, snd_op], out_op, f, one_space,
+                               hidden_name)
+
+
 def _selector_attention(expr, graph):
   """Query space, key space, score function and selected score of a selector.
 
@@ -49,6 +97,10 @@ def _selector_attention(expr, graph):
   of Selects. The score of a query-key pair is the number of predicates that
   hold on it; each Select adds its predicate on the directions of its own
   query and key S-Ops, so pairs of other S-Ops add nothing.
+
+  A Select(EQ) on binary queries and keys (sharing one L-bit code) scores the
+  dot product of the codes, L when equal and at most L - 2 otherwise, so it
+  adds L to the selected score instead of 1.
   """
   sel_expr = expr.selector
   assert sel_expr.label in graph.predecessors(expr.label)
@@ -57,13 +109,25 @@ def _selector_attention(expr, graph):
     raise NotImplementedError(
         "Only a Select or an AND of Selects compiles; got "
         f"{type(sel_expr).__name__}.")
+  term_scores = []
   for term in terms:
     assert term.keys.label in graph.predecessors(term.label)
     assert term.queries.label in graph.predecessors(term.label)
-    if (not rasp.is_categorical(term.queries) or
-        not rasp.is_categorical(term.keys)):
+    if rasp.is_binary(term.queries) or rasp.is_binary(term.keys):
+      if not (rasp.is_binary(term.queries) and rasp.is_binary(term.keys) and
+              term.predicate == rasp.Comparison.EQ):
+        raise NotImplementedError(
+            "A Select on binary S-Ops needs binary queries and keys and the "
+            f"EQ predicate; got {term.predicate}.")
+      n_bits = graph.nodes[term.queries.label][nodes.BINARY_CODE].n_bits
+      assert n_bits == graph.nodes[term.keys.label][nodes.BINARY_CODE].n_bits
+      term_scores.append(float(n_bits))
+    elif (not rasp.is_categorical(term.queries) or
+          not rasp.is_categorical(term.keys)):
       raise NotImplementedError(
-          "Selector keys and queries must be categorical.")
+          "Selector keys and queries must be categorical or binary.")
+    else:
+      term_scores.append(1.0)
 
   def space(sops):
     labels = list(dict.fromkeys(sop.label for sop in sops))
@@ -72,7 +136,8 @@ def _selector_attention(expr, graph):
 
   query_space = space([term.queries for term in terms])
   key_space = space([term.keys for term in terms])
-  predicates = [(term.queries.label, term.keys.label, term.predicate)
+  predicates = [(term.queries.label, term.keys.label,
+                 _bit_match if rasp.is_binary(term.queries) else term.predicate)
                 for term in terms]
 
   # Argument order is different in craft / transformers than RASP selectors.
@@ -82,7 +147,12 @@ def _selector_attention(expr, graph):
                for q_label, k_label, predicate in predicates
                if query.name == q_label and key.name == k_label)
 
-  return query_space, key_space, attn_basis_fn, float(len(terms))
+  return query_space, key_space, attn_basis_fn, float(sum(term_scores))
+
+
+def _bit_match(key_bit: str, query_bit: str) -> bool:
+  """Query bit i times key bit i: the code dot product sums these."""
+  return key_bit == query_bit
 
 
 def add_craft_components_to_rasp_graph(
@@ -130,7 +200,9 @@ def add_craft_components_to_rasp_graph(
       input_space = bases.VectorSpaceWithBasis(inner_node[nodes.OUTPUT_BASIS])
       output_space = bases.VectorSpaceWithBasis(node[nodes.OUTPUT_BASIS])
 
-      if rasp.is_categorical(inner_expr) and rasp.is_categorical(expr):
+      if rasp.is_binary(inner_expr) or rasp.is_binary(expr):
+        block = _binary_map_mlp(expr, graph, one_space, mlp_exactness)
+      elif rasp.is_categorical(inner_expr) and rasp.is_categorical(expr):
         basis_fun = _transform_fun_to_basis_fun(expr.f, expr.label)
         block = categorical_mlp.map_categorical_mlp(
             input_space=input_space,
@@ -183,11 +255,14 @@ def add_craft_components_to_rasp_graph(
                                   "inputs/outputs.")
       elif (
           not isinstance(expr, rasp.LinearSequenceMap) and
-          not all(rasp.is_categorical(x) for x in (fst_expr, snd_expr, expr))):
+          not all(rasp.is_categorical(x) or rasp.is_binary(x)
+                  for x in (fst_expr, snd_expr, expr))):
         raise NotImplementedError("(Non-linear) SequenceMap only supports "
-                                  "categorical inputs/outputs.")
+                                  "categorical or binary inputs/outputs.")
 
-      if isinstance(expr, rasp.LinearSequenceMap):
+      if any(rasp.is_binary(x) for x in (fst_expr, snd_expr, expr)):
+        block = _binary_map_mlp(expr, graph, one_space, mlp_exactness)
+      elif isinstance(expr, rasp.LinearSequenceMap):
         assert len(fst_space.basis) == 1
         assert len(snd_space.basis) == 1
         assert len(out_space.basis) == 1
@@ -228,9 +303,9 @@ def add_craft_components_to_rasp_graph(
             f" Input: {rasp.get_encoding(agg_expr.sop)},"
             f" Output: {rasp.get_encoding(agg_expr)}"
         )
-      if rasp.is_categorical(agg_expr) and agg_expr.default is not None:
+      if (not rasp.is_numerical(agg_expr)) and agg_expr.default is not None:
         raise NotImplementedError(
-            "Default for a categorical aggregate must be None. "
+            "Default for a categorical or binary aggregate must be None. "
             f"Got {agg_expr.default}"
         )
       if rasp.is_numerical(agg_expr) and agg_expr.default != 0:
@@ -262,7 +337,12 @@ def add_craft_components_to_rasp_graph(
       query_space, key_space, attn_basis_fn, max_logit = (
           _selector_attention(expr, graph))
       bos_space = bases.VectorSpaceWithBasis([bos_dir])
-      output_space = bases.VectorSpaceWithBasis(node[nodes.OUTPUT_BASIS])
+      if rasp.is_binary(expr):
+        # Build a one-hot output, then write each one-hot value as its code.
+        output_space = bases.VectorSpaceWithBasis.from_values(
+            expr.label, node[nodes.BINARY_CODE].values)
+      else:
+        output_space = bases.VectorSpaceWithBasis(node[nodes.OUTPUT_BASIS])
 
       block = selector_width.selector_width(
           query_space=query_space,
@@ -272,12 +352,19 @@ def add_craft_components_to_rasp_graph(
           one_space=one_space,
           attn_fn=attn_basis_fn,
           out_value_set=node[nodes.VALUE_SET],
-          categorical_output=rasp.is_categorical(expr),
+          categorical_output=not rasp.is_numerical(expr),
           causal=False,
           softmax_coldness=100,
           mlp_large_number=mlp_exactness,
           label=expr.label,
           max_logit=max_logit)
+      if rasp.is_binary(expr):
+        attn, mlp = block.blocks
+        block = transformers.SeriesWithResiduals([
+            attn,
+            binary_mlp.fold_onehot_output(mlp, output_space,
+                                          node[nodes.BINARY_CODE])
+        ])
     else:
       raise NotImplementedError(f"Expression {expr} cannot be translated to "
                                 "a model component.")

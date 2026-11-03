@@ -716,9 +716,14 @@ class Aggregate(SOp, Generic[VT]):
 
 
 class Encoding(enum.Enum):
-  """The encoding used by a SOp. Only number-valued SOps support numerical."""
+  """The encoding used by a SOp. Only number-valued SOps support numerical.
+
+  BINARY writes each value as a +-1 code of ceil(log2 m) bits (m values),
+  instead of one categorical dim per value.
+  """
   CATEGORICAL = "categorical"
   NUMERICAL = "numerical"
+  BINARY = "binary"
 
 
 def numerical(sop: SOpT) -> SOpT:
@@ -727,6 +732,10 @@ def numerical(sop: SOpT) -> SOpT:
 
 def categorical(sop: SOpT) -> SOpT:
   return annotate(sop, encoding=Encoding.CATEGORICAL)
+
+
+def binary(sop: SOpT) -> SOpT:
+  return annotate(sop, encoding=Encoding.BINARY)
 
 
 def get_encoding(sop: SOp) -> Encoding:
@@ -741,6 +750,11 @@ def is_numerical(sop: SOp) -> bool:
 def is_categorical(sop: SOp) -> bool:
   """Check if the SOp is categorically encoded."""
   return get_encoding(sop) == Encoding.CATEGORICAL
+
+
+def is_binary(sop: SOp) -> bool:
+  """Check if the SOp is bit-coded."""
+  return get_encoding(sop) == Encoding.BINARY
 
 
 def default_encoding(expr: RASPExpr) -> Optional[Encoding]:

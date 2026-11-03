@@ -161,11 +161,25 @@ def _get_model_config_and_module_names(
   return model_config, module_names
 
 
+def _readout_matrix(
+    residual_space: bases.VectorSpaceWithBasis,
+    output_space: bases.VectorSpaceWithBasis,
+    output_readout: Optional[np.ndarray]) -> np.ndarray:
+  """[D, D_out] residual -> output scores (projection, then the readout)."""
+  res_to_out = vectorspace_fns.project(residual_space, output_space).matrix
+  if output_readout is None:
+    return res_to_out
+  return res_to_out @ output_readout
+
+
 def _make_embedding_modules(
     residual_space: bases.VectorSpaceWithBasis,
     tokens_space: bases.VectorSpaceWithBasis,
     indices_space: bases.VectorSpaceWithBasis,
-    output_space: bases.VectorSpaceWithBasis) -> EmbeddingModules:
+    output_space: bases.VectorSpaceWithBasis,
+    token_matrix: Optional[np.ndarray] = None,
+    index_matrix: Optional[np.ndarray] = None,
+    output_readout: Optional[np.ndarray] = None) -> EmbeddingModules:
   """Creates embedding and unembedding modules from vector spaces.
 
   Args:
@@ -173,6 +187,12 @@ def _make_embedding_modules(
     tokens_space: Subspace to embed tokens to.
     indices_space: Subspace to embed indices/position embeddings to.
     output_space: Subspace to unembed outputs from.
+    token_matrix: [num token ids, tokens_space dims] embedding of each token
+      id in tokens_space. None embeds id i as basis direction i (one-hot).
+    index_matrix: [max_seq_len, indices_space dims] embedding of each index.
+      None embeds index i as basis direction i (one-hot).
+    output_readout: [output_space dims, num outputs] scores of the output
+      classes. None reads the output space itself.
 
   Returns:
     EmbeddingModules containing modules for token embeddings, position
@@ -182,28 +202,36 @@ def _make_embedding_modules(
 
   # If we use the 'one' direction, make sure all inputs have a 1 here
   one_dir = bases.BasisDirection("one")
-  if one_dir in residual_space:
-    one_to_res = vectorspace_fns.Linear.from_action(
-        tokens_space, residual_space,
-        lambda x: residual_space.vector_from_basis_direction(one_dir))
-    tokens_to_res = vectorspace_fns.Linear.combine_in_parallel(
-        [tokens_to_res, one_to_res])
+  if token_matrix is None:
+    if one_dir in residual_space:
+      one_to_res = vectorspace_fns.Linear.from_action(
+          tokens_space, residual_space,
+          lambda x: residual_space.vector_from_basis_direction(one_dir))
+      tokens_to_res = vectorspace_fns.Linear.combine_in_parallel(
+          [tokens_to_res, one_to_res])
+    token_embedding = tokens_to_res.matrix
+  else:
+    token_embedding = token_matrix @ tokens_to_res.matrix
+    if one_dir in residual_space:
+      token_embedding[:, residual_space.index_by_direction[one_dir]] = 1.0
 
   # Token embeddings.
-  res_to_out = vectorspace_fns.project(residual_space, output_space)
+  res_to_out = _readout_matrix(residual_space, output_space, output_readout)
   token_embed = hk.Embed(  # pytype: disable=wrong-arg-types  # jax-ndarray
-      embedding_matrix=tokens_to_res.matrix, name="token_embed")
+      embedding_matrix=token_embedding, name="token_embed")
 
   # Positional embeddings.
-  index_to_res = vectorspace_fns.project(indices_space, residual_space)
+  index_to_res = vectorspace_fns.project(indices_space, residual_space).matrix
+  if index_matrix is not None:
+    index_to_res = index_matrix @ index_to_res
   # The zeroth position should not have any positional embeddings,
   # so we add one line of padding at the zeroth position.
   pos_matrix = np.concatenate(
-      [np.zeros((1, residual_space.num_dims)), index_to_res.matrix], axis=0)
+      [np.zeros((1, residual_space.num_dims)), index_to_res], axis=0)
   pos_embed = hk.Embed(embedding_matrix=pos_matrix, name="pos_embed")
 
   def unembed(x, use_unembed_argmax):
-    out = x @ res_to_out.matrix
+    out = x @ res_to_out
     if use_unembed_argmax:
       return jnp.argmax(out, axis=-1)
     elif out.shape[-1] == 1:
@@ -223,6 +251,9 @@ def assemble_craft_model(
     categorical_output: bool,
     causal: bool = False,
     pad_token: Optional[int] = None,
+    token_matrix: Optional[np.ndarray] = None,
+    index_matrix: Optional[np.ndarray] = None,
+    output_readout: Optional[np.ndarray] = None,
 ) -> AssembledTransformerModel:
   """Assembles the given components into a Haiku model with parameters.
 
@@ -238,6 +269,11 @@ def assemble_craft_model(
     pad_token: Id of the PAD token in the input encoding. If given, attention
       does not attend to input positions holding this id. If None, no
       positions are masked.
+    token_matrix: Optional embedding of token ids in tokens_space, e.g. bit
+      codes; see _make_embedding_modules. None is one-hot.
+    index_matrix: Optional embedding of indices in indices_space.
+    output_readout: Optional map from output_space to output class scores,
+      e.g. the transposed code matrix of a binary output.
 
   Returns:
     An AssembledTransformerModel that contains the model and parameters of the
@@ -262,7 +298,10 @@ def assemble_craft_model(
         residual_space=residual_space,
         tokens_space=tokens_space,
         indices_space=indices_space,
-        output_space=output_space)
+        output_space=output_space,
+        token_matrix=token_matrix,
+        index_matrix=index_matrix,
+        output_readout=output_readout)
     return model.CompiledTransformerModel(
         transformer=transformer,
         token_embed=embed_modules.token_embed,
@@ -352,8 +391,8 @@ def assemble_craft_model(
       params=params,
       model_config=model_config,
       residual_labels=residual_labels,
-      unembed_matrix=vectorspace_fns.project(residual_space,
-                                             output_space).matrix,
+      unembed_matrix=_readout_matrix(residual_space, output_space,
+                                     output_readout),
       categorical_output=categorical_output,
       pad_token=pad_token,
   )

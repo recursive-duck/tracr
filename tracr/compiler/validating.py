@@ -103,7 +103,27 @@ def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
         expr=expr, reason="indices should always be categorical."
     )
 
-  if isinstance(expr, rasp.Select):
+  if isinstance(expr, rasp.Select) and (rasp.is_binary(expr.keys) or
+                                        rasp.is_binary(expr.queries)):
+    if not (rasp.is_binary(expr.keys) and rasp.is_binary(expr.queries)):
+      return TracrUnsupportedExpr(
+          expr=expr,
+          reason=(
+              "A Select on a binary S-Op needs binary keys and queries (both"
+              f" share one bit code). Keys: {rasp.get_encoding(expr.keys)},"
+              f" queries: {rasp.get_encoding(expr.queries)}."
+          ),
+      )
+    if expr.predicate != rasp.Comparison.EQ:
+      return TracrUnsupportedExpr(
+          expr=expr,
+          reason=(
+              "A Select on binary keys and queries only supports"
+              f" Comparison.EQ (a code dot product), got {expr.predicate}."
+              " Use categorical keys and queries for other predicates."
+          ),
+      )
+  elif isinstance(expr, rasp.Select):
     if not rasp.is_categorical(expr.keys):
       return TracrUnsupportedExpr(
           expr=expr,
@@ -144,10 +164,13 @@ def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
           ),
       )
 
-    if rasp.is_categorical(expr) and expr.default is not None:
+    if not rasp.is_numerical(expr) and expr.default is not None:
       return TracrUnsupportedExpr(
           expr=expr,
-          reason="Categorical aggregate only supports None as default value.",
+          reason=(
+              "Categorical or binary aggregate only supports None as default"
+              " value."
+          ),
       )
     if rasp.is_numerical(expr) and expr.default != 0:
       return TracrUnsupportedExpr(
@@ -157,12 +180,13 @@ def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
 
   if isinstance(expr, rasp.SequenceMap):
     if not isinstance(expr, rasp.LinearSequenceMap) and not all(
-        rasp.is_categorical(x) for x in (expr.fst, expr.snd, expr)
+        rasp.is_categorical(x) or rasp.is_binary(x)
+        for x in (expr.fst, expr.snd, expr)
     ):
       return TracrUnsupportedExpr(
           expr=expr,
           reason=(
-              "(Non-linear) SequenceMap only supports categorical"
+              "(Non-linear) SequenceMap only supports categorical or binary"
               " inputs/outputs."
           ),
       )
@@ -210,7 +234,7 @@ class DynamicValidationEvaluator(rasp.DefaultRASPEvaluator):
       agg_in = expr.sop(xs)
       if (
           # The easiest way to satisfy this is to have a selector of width 1
-          rasp.is_categorical(expr)
+          not rasp.is_numerical(expr)
           and not set(out).issubset(set(agg_in) | {None})
       ):
         self.unsupported_exprs.append(
@@ -253,7 +277,15 @@ def static_validate(program: rasp.RASPExpr) -> list[TracrUnsupportedExpr]:
   expr_queue = collections.deque([program])
   visited_labels = {program.label}
   unsupported_exprs = []
+  # tokens and indices have fixed labels, so differently encoded copies would
+  # collapse into one graph node; record every encoding they are used with.
+  primitive_encodings = collections.defaultdict(dict)
 
+  def note_primitive(expr):
+    if isinstance(expr, (rasp.TokensType, rasp.IndicesType)):
+      primitive_encodings[expr.label].setdefault(rasp.get_encoding(expr), expr)
+
+  note_primitive(program)
   while expr_queue:
     expr = expr_queue.popleft()
     unsupported_expr = _static_validate_expr(expr)
@@ -261,9 +293,21 @@ def static_validate(program: rasp.RASPExpr) -> list[TracrUnsupportedExpr]:
       unsupported_exprs.append(unsupported_expr)
 
     for child_expr in expr.children:
+      note_primitive(child_expr)
       if child_expr.label not in visited_labels:
         visited_labels.add(child_expr.label)
         expr_queue.append(child_expr)
+
+  for label, by_encoding in primitive_encodings.items():
+    if len(by_encoding) > 1:
+      encodings = sorted(e.value for e in by_encoding)
+      unsupported_exprs.append(TracrUnsupportedExpr(
+          expr=next(iter(by_encoding.values())),
+          reason=(
+              f"{label} is used with several encodings {encodings}; a"
+              " program must encode it one way."
+          ),
+      ))
 
   return unsupported_exprs
 

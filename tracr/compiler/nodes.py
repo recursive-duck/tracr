@@ -27,6 +27,8 @@ EXPR = "EXPR"  # the RASPExpr of the node
 # Note that only S-Op expressions will have these keys set.
 VALUE_SET = "VALUE_SET"  # possible values taken on by this SOp.
 OUTPUT_BASIS = "OUTPUT_BASIS"  # the corresponding named basis.
+# Binary S-Ops only: the binary_mlp.BinaryCode giving each value its bits.
+BINARY_CODE = "BINARY_CODE"
 
 # RASP Graph -> Craft Graph
 MODEL_BLOCK = "MODEL_BLOCK"  # craft block representing a RASPExpr
