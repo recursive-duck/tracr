@@ -2,11 +2,6 @@
 
 ## Backlog
 
-- ci-first-run: Confirm the GitHub Actions workflow passes on its first real run [productivity] #ci #github #verification
-
-  `.github/workflows/test.yml` was only parsed as YAML and run as an equivalent local locked pytest on Python 3.11.
-  Python 3.12 and 3.13 in the matrix have not been run. Nothing has been pushed.
-
 ## In Progress
 
 ## Done
@@ -70,5 +65,17 @@
   Root cause: precision only. Old code in float64 at max_seq_len 14 gives `x*10` max error 1.21e-11 vs 4.48e-03 in float32.
   Fix: each threshold uses L_k = max(L, 4 / gap_k) for its own gap, so only close pairs get large activations.
   `x*10`, 60 inputs: max_seq_len 10: 4.76e-04 -> 3.43e-05. max_seq_len 14: 4.48e-03 -> 1.67e-04, wrong (>1e-3) 55 -> 0. `x<0` stays 0/60. Hidden sizes unchanged.
-  max_seq_len 20 was skipped: compile alone ran past the 1-minute limit, so its error is unmeasured.
+  max_seq_len 20 (after @fix-onehot-alloc made it compile): 6.82e-03 -> 1.77e-04, wrong 55 -> 0 of 60, 12,973 hidden.
   The inferred set is still a loose over-approximation, because the two means are not independent.
+
+- ci-first-run: Confirm the GitHub Actions workflow passes on its first real run `54f9254` [productivity] #ci #github #verification
+
+  Run 41592589029 on push of `54f9254`: Python 3.11 in 2m54s, 3.12 in 2m10s, 3.13 in 1m56s, all green.
+  Only warnings: actions/checkout targets the deprecated Node 20, and ubuntu-latest moves to Ubuntu 26.
+
+- fix-onehot-alloc: One-hot vectors built from a full identity matrix make large MLP compiles O(n^3) `fa0ca17` [perf] #compiler #craft #complexity
+
+  `vector_from_basis_direction` took `np.eye(n)[i]`; `combine_in_parallel` calls it once per hidden unit.
+  Profile at max_seq_len 14: 11.5 of 14.0 s in `np.zeros`. Now a direct one-hot: profiled compile 14.028 -> 0.235 s.
+  Compile wall time: 15.7 -> 1.11 s at max_seq_len 14; 1.19 s at 16; 2.4 s at 20, which did not finish in minutes before.
+  The cause was the algorithm, not the core count: compile is single-process, and the test suite already runs on 8 workers.

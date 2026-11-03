@@ -67,4 +67,15 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Why:** one huge steepness made every hidden activation large, and float32 loses precision when it subtracts two large numbers. The same model in float64 was exact (error 1.21e-11).
 - **How:** `_threshold_large_numbers` in `numerical_mlp.py` returns L_k = max(L, 4 / gap_k) for each threshold.
 - **Result:** `pair_balance` then `x*10`, 60 inputs: max error 4.48e-03 -> 1.67e-04 at length 14, with wrong answers 55 -> 0; 4.76e-04 -> 3.43e-05 at length 10. Hidden sizes unchanged. Suite 5,827 -> 5,828 passed.
-- **Not measured:** length 20, because compile alone ran past a 1-minute limit.
+- **Length 20** (measurable after the next fix): 6.82e-03 -> 1.77e-04, wrong answers 55 -> 0.
+
+## CI first run (`54f9254`, 2026-11-03)
+
+- **Result:** the GitHub Actions workflow passed on Python 3.11, 3.12 and 3.13 (run 41592589029, 2-3 min per job).
+
+## Slow compile of large MLPs (`fa0ca17`, 2026-11-03)
+
+- **What:** building a one-hot vector no longer allocates a full identity matrix.
+- **Why:** each call made an n x n matrix to keep one row, once per hidden unit, so compile cost grew as n^3. 82% of a 14 s compile went there.
+- **How:** `vector_from_basis_direction` in `bases.py` fills a zero vector and sets one entry.
+- **Result:** compile 15.7 -> 1.11 s at length 14 (3,241 hidden). Length 20 (12,973 hidden) went from not finishing in minutes to 2.4 s.
