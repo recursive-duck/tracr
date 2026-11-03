@@ -192,11 +192,12 @@ def make_sort(vals: rasp.SOp, keys: rasp.SOp, *, max_seq_len: int,
               min_key: float) -> rasp.SOp:
   """Returns vals sorted by < relation on keys, which don't need to be unique.
 
-  The implementation differs from the RASP paper, as it avoids using
-  compositions of selectors to break ties. Instead, it uses the arguments
-  max_seq_len and min_key to ensure the keys are unique.
-
-  Note that this approach only works for numerical keys.
+  Ties keep input order. A position's target is the number of smaller keys
+  plus the number of equal keys at earlier positions; the second count is one
+  attention head over an AND of two Selects. Each count compares only the
+  keys' own values (or positions), not a (key, position) pair, so the
+  residual stream holds about |keys| + max_seq_len values instead of
+  |keys| * max_seq_len: at vocab 32 and length 32, 196 dims instead of 1,155.
 
   Example usage:
     sort = make_sort(rasp.tokens, rasp.tokens, 5, 1)
@@ -208,15 +209,29 @@ def make_sort(vals: rasp.SOp, keys: rasp.SOp, *, max_seq_len: int,
   Args:
     vals: Values to sort.
     keys: Keys for sorting.
-    max_seq_len: Maximum sequence length (used to ensure keys are unique)
-    min_key: Minimum key value (used to ensure keys are unique)
+    max_seq_len: Maximum sequence length; bounds the target position.
+    min_key: Unused. Kept for compatibility with the earlier version, which
+      broke ties with the key x + min_key * i / max_seq_len.
 
   Returns:
     Output SOp of sort program.
   """
-  keys = rasp.SequenceMap(lambda x, i: x + min_key * i / max_seq_len, keys,
-                          rasp.indices)
-  return make_sort_unique(vals, keys)
+  del min_key
+  smaller = rasp.SelectorWidth(
+      rasp.Select(keys, keys, rasp.Comparison.LT)).named("smaller")
+  earlier_equal = rasp.SelectorWidth(
+      rasp.selector_and(
+          rasp.Select(keys, keys, rasp.Comparison.EQ),
+          rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.LT),
+          simplify=False)).named("earlier_equal")
+  # The sum is at most length - 1. Sums the value sets allow but inputs never
+  # reach map to max_seq_len, which matches no index: no head reads it, so
+  # shrinking drops it with the MLP units for those sums (334,572 instead of
+  # 560,934 params at vocab 32 and length 32 with a cap of max_seq_len - 1).
+  target_pos = rasp.SequenceMap(lambda a, b: min(a + b, max_seq_len), smaller,
+                                earlier_equal).named("target_pos")
+  sel_new = rasp.Select(target_pos, rasp.indices, rasp.Comparison.EQ)
+  return rasp.Aggregate(sel_new, vals).named("sort")
 
 
 def make_sort_freq(max_seq_len: int) -> rasp.SOp:

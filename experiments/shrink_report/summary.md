@@ -8,10 +8,10 @@ Every tracr lib program in config.toml, compiled at vocab size V in [4, 8, 16, 3
 
 - Configs: 160 shrunk and verified, 0 failed (compile timeout or error), 10 verified on every input.
 - Categorical programs, decoded tokens differ where the original is decided: **0 of 66,880** sequence comparisons (both modes).
-- Differ only at ties of the original (top-2 scores within 1e-05): 29 of 66,880, in sort_freq V=16 N=32 reuse; sort_freq V=32 N=32 reuse; sort_freq V=4 N=32 reuse; sort_freq V=8 N=32 reuse.
-- Numerical programs, output not bitwise equal: 1,172 of 16,720; largest difference 2.38e-07.
-- Largest difference in categorical output scores (before argmax): 2.13e-03.
-- Dense params summed over all configs: 3,559,320,080 -> 38,013,232 (trim) -> 37,601,684 (reuse); nonzero weights in the originals: 6,353,792.
+- Differ only at ties of the original (top-2 scores within 1e-05): 0 of 66,880.
+- Numerical programs, output not bitwise equal: 712 of 16,720; largest difference 1.19e-07.
+- Largest difference in categorical output scores (before argmax): 7.63e-06.
+- Dense params summed over all configs: 3,372,997,994 -> 6,415,696 (trim) -> 5,490,997 (reuse); nonzero weights in the originals: 3,062,016.
 
 | program | configs | median x trim ↑ | median x reuse ↑ | median x d_model ↑ | reuse smaller | largest (V, N) | params before | trim ↓ | reuse ↓ | nonzero |
 |---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
@@ -19,8 +19,8 @@ Every tracr lib program in config.toml, compiled at vocab size V in [4, 8, 16, 3
 | reverse | 16 | 6.7 | 7.3 | 1.97 | 13/16 | (32, 32) | 2,505,135 | 295,815 | 232,263 | 5,903 |
 | hist | 16 | 1.9 | 1.9 | 1.46 | 0/16 | (32, 32) | 34,205 | 18,156 | 18,156 | 429 |
 | sort_unique | 16 | 1.9 | 1.9 | 1.03 | 0/16 | (32, 32) | 81,067 | 51,483 | 51,483 | 1,024 |
-| sort | 16 | 3.7 | 3.7 | 1.08 | 0/16 | (32, 32) | 21,450,359 | 5,110,875 | 5,113,019 | 529,392 |
-| sort_freq | 16 | 5.5 | 5.5 | 1.23 | 16/16 | (32, 32) | 39,958,182 | 6,043,026 | 6,023,916 | 563,211 |
+| sort | 16 | 4.3 | 4.6 | 1.23 | 16/16 | (32, 32) | 1,642,655 | 334,572 | 300,940 | 6,236 |
+| sort_freq | 16 | 5.8 | 6.7 | 1.59 | 15/16 | (32, 32) | 3,651,204 | 519,951 | 392,590 | 6,666 |
 | frac_prevs | 16 | 4.5 | 4.4 | 1.80 | 5/16 | (32, 32) | 24,149 | 5,069 | 5,076 | 666 |
 | pair_balance | 16 | 4.2 | 4.2 | 1.67 | 16/16 | (32, 32) | 45,848 | 8,815 | 8,697 | 1,240 |
 | shuffle_dyck2 | 16 | 360.3 | 436.2 | 1.68 | 16/16 | (32, 32) | 893,494,508 | 132,320 | 111,173 | 684,649 |
