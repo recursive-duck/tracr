@@ -135,9 +135,30 @@ class NumericalMlpTest(tests_common.VectorFnTestCase):
     weight = layer.action(bases.BasisDirection("input"))
     self.assertEqual(max(weight.magnitudes), 1000)
 
-  def test_effective_large_number_warns_beyond_float32_accuracy(self):
+  def test_threshold_large_numbers_warn_beyond_float32_accuracy(self):
     with self.assertLogs(level="WARNING"):
-      numerical_mlp._effective_large_number([0, 1e-6, 1], 100)
+      numerical_mlp._threshold_large_numbers([0, 1e-6, 1], 100)
+
+  def test_well_separated_thresholds_keep_a_small_large_number(self):
+    # Only the threshold between 0 and 0.001 needs a steep ramp. The others
+    # must keep the caller's L, so their activations stay small enough for
+    # float32 to subtract them accurately.
+    layer = numerical_mlp._get_discretising_layer(
+        input_value_set={0, 0.001, 1, 2},
+        f=lambda x: x,
+        hidden_name="h",
+        one_direction=bases.BasisDirection("one"),
+        large_number=100,
+    )
+    weight = layer.action(bases.BasisDirection("input"))
+    slopes = {
+        d.value[0]: m
+        for d, m in zip(weight.basis_directions, weight.magnitudes)
+        if d.name == "h" and isinstance(d.value, tuple)
+    }
+    self.assertAlmostEqual(slopes[1], 4 / 0.001, places=6)
+    self.assertEqual(slopes[2], 100)
+    self.assertEqual(slopes[3], 100)
 
   def test_near_duplicates_are_merged_onto_the_simple_fraction(self):
     values = sorted([-5.5e-17, 0.0, 5.5e-17, 1 / 3, 1 / 3 + 1e-16, 1.0])
@@ -146,13 +167,13 @@ class NumericalMlpTest(tests_common.VectorFnTestCase):
     )
 
   @parameterized.parameters(
-      dict(values=[0, 0.001, 1], expected=4 / 0.001),
-      dict(values=[0, 1], expected=100),
-      dict(values=[3], expected=100),
+      dict(values=[0, 0.001, 1], expected=[4 / 0.001, 100]),
+      dict(values=[0, 1], expected=[100]),
+      dict(values=[3], expected=[]),
   )
-  def test_effective_large_number(self, values, expected):
-    self.assertAlmostEqual(
-        numerical_mlp._effective_large_number(values, 100), expected, places=6
+  def test_threshold_large_numbers(self, values, expected):
+    np.testing.assert_allclose(
+        numerical_mlp._threshold_large_numbers(values, 100), expected
     )
 
   @parameterized.parameters([

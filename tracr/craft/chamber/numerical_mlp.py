@@ -99,31 +99,38 @@ def _merge_near_duplicates(sorted_values: List[float]) -> List[float]:
   return merged
 
 
-def _effective_large_number(
+def _threshold_large_numbers(
     sorted_values: List[float], large_number: float
-) -> float:
-  """Raises large_number so that the ramps resolve the closest input values.
+) -> np.ndarray:
+  """Returns a large number L_k for each threshold between adjacent values.
+
+  The ramp at threshold k only has to finish before the next value, so it
+  needs L_k = 4 / gap_k, where gap_k is the distance between the two values
+  around it. Using that local L_k, rather than one L for the smallest gap,
+  keeps the hidden activations of well-separated values small. That matters
+  because each step is the difference of two activations, and in float32
+  that difference loses precision in proportion to their size.
 
   Args:
     sorted_values: Distinct input values in ascending order.
     large_number: Large number L requested by the caller.
 
   Returns:
-    max(L, 4 / min_gap), so never less than what the caller asked for.
+    max(L, 4 / gap_k) for every threshold k, so never less than the caller's L.
   """
-  if len(sorted_values) < 2:
-    return large_number
-  min_gap = min(b - a for a, b in zip(sorted_values, sorted_values[1:]))
-  effective = max(large_number, _MIN_GAP_LARGE_NUMBER_FACTOR / min_gap)
-  if effective > _FLOAT32_LARGE_NUMBER_WARNING:
+  gaps = np.diff(np.asarray(sorted_values, dtype=float))
+  if gaps.size == 0:
+    return gaps
+  per_threshold = np.maximum(large_number, _MIN_GAP_LARGE_NUMBER_FACTOR / gaps)
+  if per_threshold.max() > _FLOAT32_LARGE_NUMBER_WARNING:
     logging.warning(
         "Input values of a numerical MLP are as close as %s, which needs "
         "large_number=%s to be told apart. This is beyond what float32 "
         "computes accurately, so outputs may be off by more than 1e-3.",
-        min_gap,
-        effective,
+        gaps.min(),
+        per_threshold.max(),
     )
-  return effective
+  return per_threshold
 
 
 def _get_discretising_layer(
@@ -160,8 +167,8 @@ def _get_discretising_layer(
     hidden_name: Name for hidden dimensions.
     one_direction: Auxiliary dimension that must contain 1 in the input.
     large_number: Large number L that determines accuracy of the computation.
-      It is raised automatically if the input values are so close together
-      that L would not resolve them (see `_effective_large_number`).
+      Each threshold raises it to what its neighbouring values need to be told
+      apart (see `_threshold_large_numbers`).
 
   Returns:
     DiscretisingLayerMaterials containing all components for the layer.
@@ -173,7 +180,7 @@ def _get_discretising_layer(
       output_values.append(res)
       sorted_values.append(x)
 
-  large_number = _effective_large_number(sorted_values, large_number)
+  large_numbers = _threshold_large_numbers(sorted_values, large_number)
 
   num_vals = len(sorted_values)
   value_thresholds = [
@@ -202,14 +209,14 @@ def _get_discretising_layer(
 
   one_magnitudes = np.zeros(hidden_space.num_dims)
   one_magnitudes[start_idx] = 1
-  # hidden_k_0 = ReLU(L * (x - threshold[k]) + 1)
-  # hidden_k_1 = ReLU(L * (x - threshold[k]))
-  one_magnitudes[idx0] = 1 - large_number * thresholds
-  one_magnitudes[idx1] = -large_number * thresholds
+  # hidden_k_0 = ReLU(L_k * (x - threshold[k]) + 1)
+  # hidden_k_1 = ReLU(L_k * (x - threshold[k]))
+  one_magnitudes[idx0] = 1 - large_numbers * thresholds
+  one_magnitudes[idx1] = -large_numbers * thresholds
 
   other_magnitudes = np.zeros(hidden_space.num_dims)
-  other_magnitudes[idx0] = large_number
-  other_magnitudes[idx1] = large_number
+  other_magnitudes[idx0] = large_numbers
+  other_magnitudes[idx1] = large_numbers
 
   def action(direction: bases.BasisDirection) -> bases.VectorInBasis:
     if direction == one_direction:
