@@ -9,14 +9,17 @@
 - bit-count: Exact counting that outputs bits, without N decode units or 1/N^2 resolution @scale-to-llm [experiment] #counting #precision #research
 - compiler-symbolic: Symbolic value sets and vectorized matrix building; Python loops are O(m) to O(m^2) per op @scale-to-llm [perf] #compiler #runtime #scaling
 - pack-rasp-rerun: Rerun the full pack report with the vs-RASP column; only the smoke grid ran @scale-check [experiment] #verification #packing #reports
+- const-sop: Numerical constant SOp on the existing `one` direction; drops the `ones` Map MLP layer @exact-copy [perf] #compiler #mlp #layers
+- marker-window: Nearest-preceding-marker select without one-hot indices, so copy scales to 1M context @exact-copy [feature] #attention #positions #scaling
 
 ## In Progress
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
   - bit-encoding: Binary encoding next to categorical/numerical; EQ heads as AND of bit equalities, unembed from bits @scale-to-llm [feature] #encoding #residual #compiler
-  - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
 
 ## Done
+
+- exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding `b9af7c2` [feature] #copy #ids #attention
 
 - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm `321d668` `30ee62a` `88e5442` [feature] #verification #evaluator #reports
 

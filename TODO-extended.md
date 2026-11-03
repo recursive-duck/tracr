@@ -30,6 +30,14 @@
 
   Worker D leftover. `uv run --extra experiments python experiments/pack_report.py` (timeout 2700) on a quiet machine, then commit outputs. Also: rasp_check runs the original forward twice (shrinking.compare already does); pass its outputs in.
 
+- const-sop: Numerical constant SOp on the existing `one` direction; drops the `ones` Map MLP layer @exact-copy [perf] #compiler #mlp #layers
+
+  Worker C leftover. lib_copy builds a constant-1 numerical SOp through a Map, which costs an MLP layer in every config.
+
+- marker-window: Nearest-preceding-marker select without one-hot indices, so copy scales to 1M context @exact-copy [feature] #attention #positions #scaling
+
+  Worker C leftover. The window select and code x offset key/query tables dominate lib_copy's trimmed params and grow linearly with max_seq_len (largest tested 373).
+
 ## In Progress
 
 - scale-to-llm: Compile at vocab 100-250k and context 1M: bit codes, bit-split compares, bit arithmetic, scalable checking [experiment] #scaling #encoding #llm
@@ -38,11 +46,11 @@
 
     Worker A. New rasp encoding (bits), basis inference, embed/unembed, MLP read/write of bit values. Probe EQ at V=N in {256, 1,024, 4,096} vs one-hot: dims, params, compile time, compiled vs RASP.
 
-  - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
-
-    Worker C (started 2026-11-03 13:40). Exact EQ/copy over bit codes so ids in tool calls are never corrupted. Reuse lib_bits/lib_arith/bit encoding; exhaustive k<=3 digits, <=3 IDs; probe units/params/layers/compile time vs ID length and number of IDs.
-
 ## Done
+
+- exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding `b9af7c2` [feature] #copy #ids #attention
+
+  Worker C. tracr/compiler/lib_copy.py: layer 1 decodes slot and offset as bits from 0/1 window heads, layer 2 copies with one rasp.binary EQ head on address slot*(k+1)+offset. 0 wrong of 19,502 copied tokens (22 configs, k and S to 32); copy key+query dims 28.6x fewer than one-hot at k=8, S=32, but total params only 1.2x fewer. Leftovers: @const-sop, @marker-window.
 
 - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm `321d668` `30ee62a` `88e5442` [feature] #verification #evaluator #reports
 

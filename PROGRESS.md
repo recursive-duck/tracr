@@ -174,3 +174,12 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Result:** fast_eval vs rasp.evaluate, inputs/s on one core: sort N=8 12,652 -> 187,380 (15x), **sort N=512 4.7 -> 254.7 (54x)**, hist N=8 67,678 -> 375,979 (6x), **hist N=512 17.4 -> 973 (56x)**; outputs equal in every row. **Shrink report: 0 of 41,800 sequences differ from RASP** for original, trim and reuse models in all 160 configs (largest numerical error 1.19e-07). Pack report smoke grid (V=4, N in {4, 8}): 0 of 5,960 differ.
 - **Limits:** the full pack report was not rerun (laptop load ~380), see @pack-rasp-rerun. Large configs check 256 sampled inputs; positions where RASP gives None are not checked; speedups are single noisy runs. The last push was rebased over a tracking-only commit without re-running the suite.
 - **Report:** `experiments/shrink_report/summary.md`, `experiments/fast_eval_bench.py`.
+
+## Exact copy of multi-token IDs (`b9af7c2`, 2026-11-03 14:00, worker C)
+
+- **What:** `tracr/compiler/lib_copy.py` compiles a model that copies a k-digit ID from a source span (`SRC_s d1..dk`) to the k positions after a call marker (`CALL_s`), for S slots. 15 tests.
+- **Why:** the two-tier LLM passes entity IDs between the model and tools; a copy that can be wrong corrupts every lookup after it.
+- **How:** layer 1 has 0/1 window heads that read the nearest marker's code and the index mod (k+1) as bits; layer 2 has one copy head that matches the address slot*(k+1)+offset with a binary EQ (from bit-encoding) instead of a one-hot table.
+- **Result:** exhaustive at k <= 3, S = 3, base 2: 0 mismatches in 11,562 sequences. Probe (22 configs, k and S each 1..32, base 10, 109 s): **0 wrong of 19,502 copied tokens**; copy-head key+query dims one-hot -> binary **514 -> 18 (28.6x) at k=8, S=32** and **258 -> 16 (16.1x) at k=32, S=4**; total trimmed params 11,959,332 -> 10,334,817 (1.2x) and 5,841,088 -> 4,646,622 (1.3x). 6-8 layers, about log2 S + log2 k heads. Suite 6,135 passed, 1 xfailed.
+- **Limits:** largest max_seq_len 373; the window select reads one-hot indices, so size grows linearly with context (@marker-window). Not causal, not trained, strict input layout (others rejected by check_layout). Large configs checked on random inputs, not exhaustively.
+- **Report:** `experiments/exact_copy/summary.md`, `experiments/exact_copy/exact_copy.png`.
