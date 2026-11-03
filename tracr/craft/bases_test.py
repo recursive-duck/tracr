@@ -87,6 +87,15 @@ class VectorInBasisTest(tests_common.VectorFnTestCase):
     shifted = v.add_directions(three)
     self.assertEqual(shifted, expected)
 
+  def test_vector_from_basis_direction_is_one_hot(self):
+    vs = bases.VectorSpaceWithBasis.from_names(["c", "a", "b"])
+    for i, direction in enumerate(vs.basis):
+      with self.subTest(direction=direction):
+        self.assertEqual(
+            vs.vector_from_basis_direction(direction),
+            bases.VectorInBasis(vs.basis, np.eye(vs.num_dims)[i]),
+        )
+
 
 class ProjectionTest(tests_common.VectorFnTestCase):
 

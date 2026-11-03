@@ -263,8 +263,11 @@ class VectorSpaceWithBasis:
   def vector_from_basis_direction(
       self, basis_direction: BasisDirection
   ) -> VectorInBasis:
-    i = self.index_by_direction[basis_direction]
-    return self.make_vector(np.eye(self.num_dims)[i])
+    # Build the one-hot row directly: np.eye(n)[i] allocates n x n to keep n,
+    # which made combining large MLPs cost O(n^3).
+    magnitudes = np.zeros(self.num_dims)
+    magnitudes[self.index_by_direction[basis_direction]] = 1
+    return self.make_vector(magnitudes)
 
   def null_vector(self) -> VectorInBasis:
     return self.make_vector(np.zeros(self.num_dims))
