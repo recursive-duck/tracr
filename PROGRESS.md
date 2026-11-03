@@ -1,0 +1,55 @@
+# Progress
+
+All entries below are from 2026-11-03 01:52. Each compares against the baseline of 5,756 passed, 1 xfailed.
+After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed in 58.42 s.
+
+## Crash on large vocabularies (`8cfa45b`)
+
+- **What:** attention `key_size` now covers the value size of every head.
+- **Why:** compiling crashed whenever a vocabulary was larger than the key width, for example vocab 6 at max_seq_len 3.
+- **How:** added `w_ov.matrix.shape[1]` to the `key_size` maximum in `assemble.py`.
+- **Result:** vocab 6, 7, 8 and 20 went from ValueError to 0 mismatches against the RASP interpreter.
+
+## Padding changed answers (`49d45f8`)
+
+- **What:** compiled models now ignore PAD positions in attention.
+- **Why:** selectors keyed on indices counted PAD as real input. Width on [1,2] gave 4 with two PADs instead of 2.
+- **How:** `craft_model_to_transformer` passes the encoder's PAD id through `assemble_craft_model` to the model.
+- **Result:** mismatches over 174 padded pairs fell 174 -> 0 and 122 -> 0 on the two broken programs.
+
+## Wrong answers after averaging (`37ab6aa`)
+
+- **What:** a numerical Aggregate now lists every possible mean, and numerical MLPs sharpen their steps to tell close values apart.
+- **Why:** the compiler only knew means like 1/3, not 2/3, so a later Map silently rounded 2/3 to 1/2.
+- **How:** the value set in `basis_inference.py` enumerates every reduced k/n, and `numerical_mlp.py` raises L to at least 4 / min gap.
+- **Result:** `x>0.5` went 25/62 -> 0/62 wrong at length 5, and 206/300 -> 0/300 at length 20. `x*10` went 35/62 -> 0/62 and 270/300 -> 0/300.
+- **Cost:** MLP hidden size grows 41 -> 257 at length 20.
+- **Limit:** a Map after a difference of two means loses accuracy from about length 14, because float32 runs out of precision.
+
+## Compile time on shared subprograms (`44e54db`)
+
+- **What:** graph extraction and depth computation now visit each expression once.
+- **Why:** cost grew 4x for every reused subexpression, so a 26-node program took 20 s, and a 34-node one did not finish in 120 s.
+- **How:** added a visited set in `rasp_to_graph.py`, and replaced the DFS in `craft_graph_to_model.py` with a topological pass.
+- **Result:** depth at n=12 went 20.018 -> 0.000227 s, and full compile 20.785 -> 1.474 s. Output on 8 lib programs is identical across 328 arrays.
+
+## Copies sharing an ID (`497a089`)
+
+- **What:** `copy()` now always produces a new ID.
+- **Why:** after a label was read, `rasp.numerical(x)` shared that label with `x`, and the compiler merged the two nodes.
+- **How:** `copy()` drops the cached `unique_id`.
+- **Result:** two programs that crashed at compile now match RASP on all 81 inputs.
+
+## Validator coverage (`5627996`)
+
+- **What:** the validator now reports everything the compiler cannot handle.
+- **Why:** it compared shared default names, so it skipped children. Six unsupported forms also got through and failed later with mixed errors.
+- **How:** dedupes by label, and checks S-Op and selector types against the supported set.
+- **Result:** those forms now all raise NotImplementedError. 49 of 49 compilable programs still pass, and 9 of 9 unsupported ones are flagged.
+
+## Packaging and CI (`ac64d3d`)
+
+- **What:** `pyproject.toml` replaces `setup.py`, with bounded dependencies, `uv.lock`, `.gitignore` and a GitHub Actions test workflow.
+- **Why:** there were no pins, no Python floor, no CI, and running tests dirtied the tree.
+- **How:** set `requires-python >=3.11` from uv resolution, since chex 0.1.92 needs it. Direct dependencies lock at the tested versions.
+- **Result:** built wheels hold the same 61 files, and a fresh install runs the README example. The workflow has not yet run on GitHub.
