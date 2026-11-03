@@ -14,11 +14,23 @@
 # ==============================================================================
 """RASP Evaluator which applies causal masks to selectors."""
 
+import collections
 import dataclasses
-import queue
 from typing import Sequence, Union
 
 from tracr.rasp import rasp
+
+# S-Op types that have both a basis rule (basis_inference.py) and a craft
+# component (expr_to_craft_graph.py). Full has a basis rule but no craft
+# component, so it is not listed. ConstantSOp and LengthType have neither.
+_COMPILABLE_SOP_TYPES = (
+    rasp.TokensType,
+    rasp.IndicesType,
+    rasp.SelectorWidth,
+    rasp.Map,
+    rasp.SequenceMap,  # Includes LinearSequenceMap.
+    rasp.Aggregate,
+)
 
 
 @dataclasses.dataclass
@@ -29,15 +41,51 @@ class TracrUnsupportedExpr:
   reason: str
 
 
+def _unsupported_sop_reason(sop: rasp.SOp) -> str | None:
+  """Returns why `sop` cannot be compiled, or None if it can."""
+  if isinstance(sop, _COMPILABLE_SOP_TYPES):
+    return None
+  if isinstance(sop, rasp.LengthType):
+    return (
+        "rasp.length is not compilable. Use lib.make_length() instead, which"
+        " is built from SelectorWidth."
+    )
+  if isinstance(sop, rasp.Full):
+    return (
+        "Full is not compilable: the compiler has no model component for it."
+        " It is only usable inside selectors that simplification removes."
+    )
+  if isinstance(sop, rasp.ConstantSOp):
+    return "ConstantSOp is a testing-only construct and is not compilable."
+  return f"{type(sop).__name__} is not a supported S-Op."
+
+
 def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
   """Returns TracrUnsupportedExpr if `expr` is not supported by Tracr."""
+  if isinstance(expr, rasp.SOp):
+    sop_reason = _unsupported_sop_reason(expr)
+    if sop_reason:
+      return TracrUnsupportedExpr(expr=expr, reason=sop_reason)
+
+  if isinstance(expr, rasp.Selector) and not isinstance(expr, rasp.Select):
+    reason = (
+        f"{type(expr).__name__} is not compilable: only rasp.Select is"
+        " supported as a selector."
+    )
+    if isinstance(expr, (rasp.SelectorAnd, rasp.SelectorOr, rasp.SelectorNot)):
+      reason += (
+          " Compound selectors compile only if simplification reduces them to"
+          " a single Select."
+      )
+    return TracrUnsupportedExpr(expr=expr, reason=reason)
+
   if isinstance(expr, rasp.TokensType) and rasp.is_numerical(expr):
     return TracrUnsupportedExpr(
         expr=expr, reason="tokens should always be categorical."
     )
   if isinstance(expr, rasp.IndicesType) and rasp.is_numerical(expr):
     return TracrUnsupportedExpr(
-        expr=expr, reason="tokens should always be categorical."
+        expr=expr, reason="indices should always be categorical."
     )
 
   if isinstance(expr, rasp.Select):
@@ -52,7 +100,25 @@ def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
           reason="Select queries must be categorical.",
       )
 
+  if isinstance(expr, rasp.SelectorWidth):
+    if not isinstance(expr.selector, rasp.Select):
+      return TracrUnsupportedExpr(
+          expr=expr,
+          reason=(
+              "SelectorWidth's selector must be a rasp.Select, got"
+              f" {type(expr.selector).__name__}."
+          ),
+      )
+
   if isinstance(expr, rasp.Aggregate):
+    if not isinstance(expr.selector, rasp.Select):
+      return TracrUnsupportedExpr(
+          expr=expr,
+          reason=(
+              "Aggregate's selector must be a rasp.Select, got"
+              f" {type(expr.selector).__name__}."
+          ),
+      )
     if rasp.get_encoding(expr) != rasp.get_encoding(expr.sop):
       return TracrUnsupportedExpr(
           expr=expr,
@@ -164,24 +230,25 @@ def static_validate(program: rasp.RASPExpr) -> list[TracrUnsupportedExpr]:
   Returns:
     list of all unsupported subexpressions detectable statically.
   """
-  expr_queue = queue.Queue()
+  # Breadth-first search over the RASP expression graph. Nodes are identified by
+  # `label` (unique per expression instance), the same key the compiler uses in
+  # rasp_to_graph. Names are not unique: every Aggregate is named "aggregate".
+  # Each node is marked visited when enqueued, so shared subgraphs are walked
+  # once and the cost stays linear in the number of distinct expressions.
+  expr_queue = collections.deque([program])
+  visited_labels = {program.label}
   unsupported_exprs = []
-  visited_exprs = set()
 
-  # Breadth-first search over the RASP expression graph.
-  def visit_raspexpr(expr: rasp.RASPExpr):
-    visited_exprs.add(expr.name)
+  while expr_queue:
+    expr = expr_queue.popleft()
     unsupported_expr = _static_validate_expr(expr)
     if unsupported_expr:
       unsupported_exprs.append(unsupported_expr)
 
     for child_expr in expr.children:
-      if child_expr.name not in visited_exprs:
-        expr_queue.put(child_expr)
-
-  expr_queue.put(program)
-  while not expr_queue.empty():
-    visit_raspexpr(expr_queue.get())
+      if child_expr.label not in visited_labels:
+        visited_labels.add(child_expr.label)
+        expr_queue.append(child_expr)
 
   return unsupported_exprs
 
