@@ -4,27 +4,46 @@
 
 ## In Progress
 
-- ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink [experiment] #superposition #ilp #packing
+- gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing [perf] #gating #bounds #packing
 
-  Gate every block on a task token, so one program's values are zero while another runs and both can share residual dims.
-  An integer program picks layer, head slot and dims per block; dims shared across programs force separate heads.
-  Goal: dense params grow about K instead of K^2 for K programs, with outputs identical to each program alone.
-  Probe at V=8, N=8, 10 programs (scratchpad): block-diagonal D 385, 792,715 params; gated MLPs D 129 (max single program 126), 219,171; 10 separate models 125,233.
-  Without gates (MLP reads must see zeros) D 205. Erasing every dead dim cuts D to 108 but adds units: 357,156.
+  Probe at V=4, N=4, every input, 206 units: gate used max 1.945e+08 (median 2,587); needed (largest positive pre-activation under another task) max 100 (median 2).
+  The largest weight in the 10 original models is 100. Worst units are layer-0 units of hist and length.
+  LayerNorm would not help: it rescales the gate and the activation it must beat by the same input-dependent factor, and breaks exactness.
 
-  - pack-model: Task-tagged token ids, gated MLPs, shared residual slots; each task matches its program [feature] #packing #gating #exactness
+  - gate-tight-bound: Charge each unit only for other programs' values alive at its layer, one-hot dims bounded by 1 [perf] #bounds #soundness #intervals
 
-    A block of another program is silent: attention value reads see zeros, MLP units get -M per other task's `one` dim, M from a sound bound.
-    Positional table shared (identical across programs, never value-read). Per-head logit divisors. No erasing, all programs start at layer 0.
+    Today: interval bound pushed through every layer, summing |w2| over all units, final-time bound of every program sharing the slot, own program included.
 
-  - pack-layout: Slots by DSatur colouring, certified by a clique bound, integer program when they differ [perf] #ilp #colouring #residual
+  - gate-rebalance: Scale each unit's w1 by 1/c and w2 by c so its largest weights are balanced [perf] #relu #homogeneity #weights
 
-    Conflict: same program, or a value-read of one after the other's birth. Cliques per (program, time) give the bound and the ILP rows.
-
-  - pack-report: Width and params vs number of programs: packed vs block-diagonal vs separate [experiment] #scaling #superposition #report
+    ReLU(a x) = a ReLU(x) for a > 0, so the output is unchanged up to float rounding.
 
 
 ## Done
+
+- ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink `fcf107b` [experiment] #superposition #ilp #packing
+
+  Gate every block on a task token, so one program's values are zero while another runs and both can share residual dims.
+  Goal: dense params grow about K instead of K^2 for K programs, with outputs identical to each program alone.
+  Result: width grows about like the widest program (median 1.10x it), params do not: packed 1.84x separate at K=10 vs 4.87x for block-diagonal (medians).
+  Probe at V=8, N=8, 10 programs (scratchpad): block-diagonal D 385, 792,715 params; gated MLPs D 129 (max single program 126), 219,171; 10 separate models 125,233.
+  Without gates (MLP reads must see zeros) D 205. Erasing every dead dim cuts D to 108 but adds units: 357,156.
+
+  - pack-model: Task-tagged token ids, gated MLPs, shared residual slots; each task matches its program `fcf107b` [feature] #packing #gating #exactness
+
+    A block of another program is silent: attention value reads see zeros, MLP units get -M per other task's `one` dim, M from a sound bound.
+    Positional table shared (identical across programs, never value-read). Per-head logit divisors. No erasing, all programs start at layer 0.
+    Report: 0 decided mismatches in 33,440 categorical comparisons; 29 tie flips (sort_freq N=32, same as shrink reuse); numerical max diff 2.38e-07.
+
+  - pack-layout: Slots by DSatur colouring, certified by a clique bound, integer program when they differ `fcf107b` [perf] #ilp #colouring #residual
+
+    Conflict: same program, or a value-read of one after the other's birth. Cliques per (program, time) give the bound and the ILP rows.
+    DSatur met the bound in 128/160 packs, at most 3 slots above it. The ILP ran 32 times: optimal 13, beat DSatur 0, time limit 15, skipped 4.
+
+  - pack-report: Width and params vs number of programs: packed vs block-diagonal vs separate `fcf107b` [experiment] #scaling #superposition #report
+
+    16 configs, 0 failed. Summed: packed 62,076,515, block-diagonal 132,620,160 (2.14x), separate trimmed 38,013,232 (packed 1.63x).
+    x block 3.04-3.92 at N<=8 with V<=8, 1.64-2.54 at N=32. Max gate up to 1.6e+09, see @gate-bounds.
 
 - lossless-shrink: Shrink compiled models with identical outputs: fewer dims, heads and units, per-layer shapes `04fb553` [perf] #compression #exactness #residual
 
