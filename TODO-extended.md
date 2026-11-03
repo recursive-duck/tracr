@@ -4,22 +4,29 @@
 
 ## In Progress
 
-- gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing [perf] #gating #bounds #packing
+- ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 56 runs @pack-layout [perf] #ilp #runtime #packing
+
+  Pack report `3b8c4ad`: the integer program is all of the pack time, 157-356 s per config in 5 of 16 configs, 0 narrower layouts in 24 runs (0 in 32 before).
+  Lower ilp_time_limit_s 60 -> 5 in config.toml and the module default; re-run the report and compare pack_s before -> after.
+
+## Done
+
+- gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing `3b8c4ad` [perf] #gating #bounds #packing
 
   Probe at V=4, N=4, every input, 206 units: gate used max 1.945e+08 (median 2,587); needed (largest positive pre-activation under another task) max 100 (median 2).
   The largest weight in the 10 original models is 100. Worst units are layer-0 units of hist and length.
   LayerNorm would not help: it rescales the gate and the activation it must beat by the same input-dependent factor, and breaks exactness.
+  After: probe gate max 201 (median 5), needed at the unit's own layer max 100 (median 2), gate / (needed + 1) at most 2.5. Pack report max gate 1.6e+09 -> 8.45e+03.
 
-  - gate-tight-bound: Charge each unit only for other programs' values alive at its layer, one-hot dims bounded by 1 [perf] #bounds #soundness #intervals
+  - gate-tight-bound: Charge each unit only for other programs' values alive at its layer, one-hot dims bounded by 1 `3b8c4ad` [perf] #bounds #soundness #intervals
 
-    Today: interval bound pushed through every layer, summing |w2| over all units, final-time bound of every program sharing the slot, own program included.
+    Before: interval bound pushed through every layer, summing |w2| over all units, final-time bound of every program sharing the slot, own program included.
+    Now: per other task j, sign-aware intervals of j's values born before the unit's layer plus positions; categorical dims clamped to [0, 1].
 
-  - gate-rebalance: Scale each unit's w1 by 1/c and w2 by c so its largest weights are balanced [perf] #relu #homogeneity #weights
+  - gate-rebalance: Scale each unit's w1 by 1/c and w2 by c so its largest weights are balanced `3b8c4ad` [perf] #relu #homogeneity #weights
 
-    ReLU(a x) = a ReLU(x) for a > 0, so the output is unchanged up to float rounding.
+    ReLU(x / c) c = ReLU(x) and c is a power of 2, so outputs are bitwise equal (tested). Largest weight 201 -> 100 at V=4 N=4, 128 at N=32.
 
-
-## Done
 
 - ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink `fcf107b` [experiment] #superposition #ilp #packing
 

@@ -5,11 +5,13 @@
 
 ## In Progress
 
-- gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing [perf] #gating #bounds #packing
-  - gate-tight-bound: Charge each unit only for other programs' values alive at its layer, one-hot dims bounded by 1 [perf] #bounds #soundness #intervals
-  - gate-rebalance: Scale each unit's w1 by 1/c and w2 by c so its largest weights are balanced [perf] #relu #homogeneity #weights
+- ilp-time-limit: Cut packing time with a 5 s integer-program limit; it never beat DSatur in 56 runs @pack-layout [perf] #ilp #runtime #packing
 
 ## Done
+
+- gate-bounds: Shrink packing gates from 1.9e8 toward the 100 actually needed, outputs unchanged @ilp-packing `3b8c4ad` [perf] #gating #bounds #packing
+  - gate-tight-bound: Charge each unit only for other programs' values alive at its layer, one-hot dims bounded by 1 `3b8c4ad` [perf] #bounds #soundness #intervals
+  - gate-rebalance: Scale each unit's w1 by 1/c and w2 by c so its largest weights are balanced `3b8c4ad` [perf] #relu #homogeneity #weights
 
 - ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink `fcf107b` [experiment] #superposition #ilp #packing
   - pack-model: Task-tagged token ids, gated MLPs, shared residual slots; each task matches its program `fcf107b` [feature] #packing #gating #exactness
