@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for compiler.basis_inference."""
 
+import fractions
+
 from absl.testing import absltest
 from absl.testing import parameterized
 from tracr.compiler import basis_inference
@@ -101,6 +103,43 @@ class InferBasesTest(parameterized.TestCase):
           expected_value_set={0, 1, 1 / 2},
       ),
       dict(
+          testcase_name="numerical_aggregate_contains_all_fractions",
+          program=rasp.numerical(
+              rasp.Aggregate(
+                  rasp.Select(rasp.tokens, rasp.indices, rasp.Comparison.EQ),
+                  rasp.tokens,
+              )
+          ),
+          vocab={0, 1},
+          max_seq_len=4,
+          expected_value_set={0, 1, 1 / 2, 1 / 3, 2 / 3, 1 / 4, 3 / 4},
+      ),
+      dict(
+          testcase_name="numerical_aggregate_of_ones_only",
+          program=rasp.numerical(
+              rasp.Aggregate(
+                  rasp.Select(rasp.tokens, rasp.indices, rasp.Comparison.EQ),
+                  rasp.tokens,
+              )
+          ),
+          vocab={1},
+          max_seq_len=3,
+          # The mean of ones is 1; 0 is the default of an empty selection.
+          expected_value_set={0, 1},
+      ),
+      dict(
+          testcase_name="numerical_aggregate_of_zeros_only",
+          program=rasp.numerical(
+              rasp.Aggregate(
+                  rasp.Select(rasp.tokens, rasp.indices, rasp.Comparison.EQ),
+                  rasp.tokens,
+              )
+          ),
+          vocab={0},
+          max_seq_len=3,
+          expected_value_set={0},
+      ),
+      dict(
           testcase_name="selector_width",
           program=rasp.SelectorWidth(
               rasp.Select(rasp.tokens, rasp.indices, rasp.Comparison.EQ)
@@ -140,6 +179,33 @@ class InferBasesTest(parameterized.TestCase):
         extracted.graph.nodes[program.label][nodes.VALUE_SET],
         expected_value_set,
     )
+
+  @parameterized.parameters(1, 2, 5, 12, 20)
+  def test_numerical_aggregate_value_set_has_no_near_duplicates(
+      self, max_seq_len
+  ):
+    program = rasp.numerical(
+        rasp.Aggregate(
+            rasp.Select(rasp.tokens, rasp.indices, rasp.Comparison.EQ),
+            rasp.tokens,
+        )
+    )
+    extracted = rasp_to_graph.extract_rasp_graph(program)
+
+    basis_inference.infer_bases(
+        extracted.graph, extracted.sink, {0, 1}, max_seq_len=max_seq_len
+    )
+
+    value_set = sorted(extracted.graph.nodes[program.label][nodes.VALUE_SET])
+    expected = sorted({
+        fractions.Fraction(k, n)
+        for n in range(1, max_seq_len + 1)
+        for k in range(n + 1)
+    } | {fractions.Fraction(0)})
+    # One float per reduced fraction, e.g. 2/6 must not appear next to 1/3.
+    self.assertLen(value_set, len(expected))
+    for actual, want in zip(value_set, expected):
+      self.assertAlmostEqual(actual, float(want), places=12)
 
 
 if __name__ == "__main__":

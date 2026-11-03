@@ -15,6 +15,7 @@
 """Inferring the vector spaces taken on by certain operations."""
 
 import dataclasses
+import fractions as fractions_lib
 import itertools
 from typing import Set
 
@@ -25,6 +26,48 @@ from tracr.rasp import rasp
 from tracr.utils import errors
 
 Node = nodes.Node
+
+
+def _numerical_aggregate_value_set(
+    sop_value_set: Set[rasp.Value], max_seq_len: int
+) -> Set[rasp.Value]:
+  """Returns all values the mean of binary values can take.
+
+  The mean of n values from {0, 1} is k / n for every 0 <= k <= n, not just
+  1 / n. Averaging over fewer than max_seq_len positions is possible, so n
+  ranges over 1..max_seq_len. Only the distinct (reduced) fractions are kept,
+  so that there are no near-duplicates such as 1/3 and 2/6. 0 is always in the
+  set because it is the default output of an Aggregate that selects nothing.
+
+  Args:
+    sop_value_set: Values of the averaged S-Op, expected to be a subset of
+      {0, 1}.
+    max_seq_len: Maximum number of averaged positions.
+  """
+  if not all(x == 0 or x == 1 for x in sop_value_set):
+    # Values such as 0.5 pass the caller's int() check but are not binary, and
+    # the exact enumeration below does not cover them: keep the previous
+    # approximation (value / n) so these programs behave as before.
+    return {
+        value / length
+        for value in sop_value_set
+        for length in range(1, max_seq_len + 1)
+    } | {0}
+  has_zero = any(x == 0 for x in sop_value_set)
+  has_one = any(x == 1 for x in sop_value_set)
+  if has_zero and has_one:
+    means = {
+        fractions_lib.Fraction(k, n)
+        for n in range(1, max_seq_len + 1)
+        for k in range(n + 1)
+    }
+  elif has_one:
+    # Every selected value is 1, so the mean is always exactly 1.
+    means = {fractions_lib.Fraction(1)}
+  else:
+    means = set()
+  means.add(fractions_lib.Fraction(0))
+  return {float(m) for m in means}
 
 
 @dataclasses.dataclass
@@ -81,11 +124,7 @@ def infer_bases(
               "Attention patterns can currently only "
               "average binary variables. Not:", sop_value_set)
 
-        value_set = set()
-        for value in sop_value_set:
-          for length in range(1, max_seq_len + 1):
-            value_set.add(value / length)
-        return value_set
+        return _numerical_aggregate_value_set(sop_value_set, max_seq_len)
     raise ValueError(f"Unsupported S-Op: {sop}")
 
   for node_id in nx.dfs_postorder_nodes(graph.reverse(), sink[nodes.ID]):

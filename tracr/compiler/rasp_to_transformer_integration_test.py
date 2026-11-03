@@ -14,6 +14,9 @@
 # ==============================================================================
 """Integration tests for the full RASP -> transformer compilation."""
 
+import itertools
+import random
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -26,6 +29,23 @@ from tracr.rasp import rasp
 
 _COMPILER_BOS = "rasp_to_transformer_integration_test_BOS"
 _COMPILER_PAD = "rasp_to_transformer_integration_test_PAD"
+
+
+def _make_fraction_of_ones():
+  """Running mean of the binary tokens, i.e. a numerical Aggregate."""
+  is_one = rasp.numerical(rasp.Map(lambda t: t == 1, rasp.tokens))
+  prevs = rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.LEQ)
+  return rasp.numerical(rasp.Aggregate(prevs, is_one, default=0))
+
+
+def _sample_binary_inputs(max_seq_len, num_samples, seed):
+  """Seeded sample of binary inputs, half of them of maximum length."""
+  rng = random.Random(seed)
+  samples = [[1] * max_seq_len, [0, 1] * (max_seq_len // 2)]
+  while len(samples) < num_samples:
+    length = max_seq_len if rng.random() < 0.5 else rng.randint(1, max_seq_len)
+    samples.append([rng.randint(0, 1) for _ in range(length)])
+  return samples
 
 # Force float32 precision on TPU, which otherwise defaults to float16.
 jax.config.update("jax_default_matmul_precision", "float32")
@@ -249,6 +269,78 @@ class CompilerIntegrationTest(tests_common.VectorFnTestCase):
       )
     else:
       self.assertEqual(output_stripped, expected_output)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="threshold",
+          make_program=lambda frac: rasp.Map(lambda x: x > 0.5, frac),
+      ),
+      dict(
+          testcase_name="scale",
+          make_program=lambda frac: rasp.numerical(
+              rasp.Map(lambda x: x * 10, frac)
+          ),
+      ),
+  )
+  def test_map_after_numerical_aggregate_matches_rasp_exhaustively(
+      self, make_program
+  ):
+    # A Map on a mean of binary values must see every value k / n, not only
+    # 1 / n, otherwise e.g. 2/3 is snapped to 1/2.
+    max_seq_len = 5
+    program = make_program(_make_fraction_of_ones())
+    model = compiling.compile_rasp_to_model(
+        program, {0, 1}, max_seq_len, compiler_bos=_COMPILER_BOS
+    )
+    for length in range(1, max_seq_len + 1):
+      for tokens in itertools.product([0, 1], repeat=length):
+        tokens = list(tokens)
+        with self.subTest(tokens=tokens):
+          actual = model.apply([_COMPILER_BOS] + tokens).decoded[1:]
+          np.testing.assert_allclose(
+              np.asarray(actual, dtype=float),
+              np.asarray(program(tokens), dtype=float),
+              atol=1e-3,
+          )
+
+  @parameterized.parameters(10, 20)
+  def test_map_after_numerical_aggregate_matches_rasp_on_long_sequences(
+      self, max_seq_len
+  ):
+    # With many distinct means the gaps between them get small, so the MLP has
+    # to be sharper than the default mlp_exactness to tell them apart.
+    program = rasp.numerical(
+        rasp.Map(lambda x: x * 10, _make_fraction_of_ones())
+    )
+    model = compiling.compile_rasp_to_model(
+        program, {0, 1}, max_seq_len, compiler_bos=_COMPILER_BOS
+    )
+    for tokens in _sample_binary_inputs(max_seq_len, 30, seed=0):
+      with self.subTest(tokens=tokens):
+        actual = model.apply([_COMPILER_BOS] + tokens).decoded[1:]
+        np.testing.assert_allclose(
+            np.asarray(actual, dtype=float),
+            np.asarray(program(tokens), dtype=float),
+            atol=1e-3,
+        )
+
+  @parameterized.parameters(({0},), ({1},))
+  def test_map_after_numerical_aggregate_of_single_value_vocab(self, vocab):
+    # Selecting strictly earlier positions leaves the first position without
+    # any selection, so the default 0 is output next to the mean (0 or 1).
+    max_seq_len = 4
+    is_one = rasp.numerical(rasp.Map(lambda t: t == 1, rasp.tokens))
+    earlier = rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.LT)
+    mean = rasp.numerical(rasp.Aggregate(earlier, is_one, default=0))
+    program = rasp.numerical(rasp.Map(lambda x: x * 10, mean))
+    model = compiling.compile_rasp_to_model(
+        program, vocab, max_seq_len, compiler_bos=_COMPILER_BOS
+    )
+    for length in range(1, max_seq_len + 1):
+      tokens = [next(iter(vocab))] * length
+      with self.subTest(tokens=tokens):
+        actual = model.apply([_COMPILER_BOS] + tokens).decoded[1:]
+        np.testing.assert_allclose(actual, program(tokens), atol=1e-3)
 
 
 if __name__ == "__main__":

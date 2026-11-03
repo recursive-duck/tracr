@@ -15,8 +15,12 @@
 """MLPs to compute arbitrary numerical functions by discretising."""
 
 import dataclasses
+import fractions
+import logging
+import math
 from typing import Callable, Iterable, List
 
+import numpy as np
 from tracr.craft import bases
 from tracr.craft import transformers
 from tracr.craft import vectorspace_fns
@@ -36,6 +40,90 @@ class DiscretisingLayerMaterials:
   action: Callable[[bases.BasisDirection], bases.VectorInBasis]
   hidden_space: bases.VectorSpaceWithBasis
   output_values: List[float]
+
+
+# Each value sits half a gap away from the nearest threshold, and the ramp of a
+# threshold is 1/L wide, so L >= 2 / min_gap is the exact limit for the ramp to
+# be fully on or off at every value. A factor of 4 leaves one full unit of
+# activation as margin for float32 rounding of the (large) weights and biases.
+_MIN_GAP_LARGE_NUMBER_FACTOR = 4.0
+
+
+# Values closer than this are the same number up to float64 rounding noise
+# (e.g. 1/2 - 1/3 vs. 1/3 - 1/6), far below anything float32 can tell apart.
+_NEAR_DUPLICATE_TOLERANCE = 1e-9
+_SNAP_MAX_DENOMINATOR = 10**6
+
+# Biases are about L * threshold. Above 2**15 one float32 ulp of the bias is
+# already ~4e-3 of an activation, which shows up in the output of the MLP.
+_FLOAT32_LARGE_NUMBER_WARNING = 2**15
+
+
+def _merge_near_duplicates(sorted_values: List[float]) -> List[float]:
+  """Merges runs of values that only differ by rounding noise into one value.
+
+  Without this, the smallest gap between values can be ~1e-17 and no finite
+  large_number separates them. Each run is represented by its member that is
+  closest to the simple fraction the run is a rounding of, so that e.g. a run
+  {-5e-17, 0.0, 5e-17} is represented by 0.0. The representative is always an
+  existing member, so f only ever sees values from the input set.
+
+  Args:
+    sorted_values: Distinct input values in ascending order.
+
+  Returns:
+    Ascending list of values, one per run of near-duplicates.
+  """
+  runs = []
+  for x in sorted_values:
+    if runs and math.isclose(
+        x,
+        runs[-1][-1],
+        rel_tol=_NEAR_DUPLICATE_TOLERANCE,
+        abs_tol=_NEAR_DUPLICATE_TOLERANCE,
+    ):
+      runs[-1].append(x)
+    else:
+      runs.append([x])
+
+  merged = []
+  for run in runs:
+    if len(run) == 1:
+      merged.append(run[0])
+      continue
+    mean = sum(run) / len(run)
+    snapped = float(
+        fractions.Fraction(mean).limit_denominator(_SNAP_MAX_DENOMINATOR)
+    )
+    merged.append(min(run, key=lambda x: abs(x - snapped)))
+  return merged
+
+
+def _effective_large_number(
+    sorted_values: List[float], large_number: float
+) -> float:
+  """Raises large_number so that the ramps resolve the closest input values.
+
+  Args:
+    sorted_values: Distinct input values in ascending order.
+    large_number: Large number L requested by the caller.
+
+  Returns:
+    max(L, 4 / min_gap), so never less than what the caller asked for.
+  """
+  if len(sorted_values) < 2:
+    return large_number
+  min_gap = min(b - a for a, b in zip(sorted_values, sorted_values[1:]))
+  effective = max(large_number, _MIN_GAP_LARGE_NUMBER_FACTOR / min_gap)
+  if effective > _FLOAT32_LARGE_NUMBER_WARNING:
+    logging.warning(
+        "Input values of a numerical MLP are as close as %s, which needs "
+        "large_number=%s to be told apart. This is beyond what float32 "
+        "computes accurately, so outputs may be off by more than 1e-3.",
+        min_gap,
+        effective,
+    )
+  return effective
 
 
 def _get_discretising_layer(
@@ -72,16 +160,20 @@ def _get_discretising_layer(
     hidden_name: Name for hidden dimensions.
     one_direction: Auxiliary dimension that must contain 1 in the input.
     large_number: Large number L that determines accuracy of the computation.
+      It is raised automatically if the input values are so close together
+      that L would not resolve them (see `_effective_large_number`).
 
   Returns:
     DiscretisingLayerMaterials containing all components for the layer.
   """
   output_values, sorted_values = [], []
-  for x in sorted(input_value_set):
+  for x in _merge_near_duplicates(sorted(input_value_set)):
     res = errors.ignoring_arithmetic_errors(f)(x)
     if res is not None:
       output_values.append(res)
       sorted_values.append(x)
+
+  large_number = _effective_large_number(sorted_values, large_number)
 
   num_vals = len(sorted_values)
   value_thresholds = [
@@ -95,28 +187,34 @@ def _get_discretising_layer(
     hidden_directions.extend([dir0, dir1])
   hidden_space = bases.VectorSpaceWithBasis(hidden_directions)
 
+  # The action only has two distinct results (for the one direction and for
+  # any other input), so build both once instead of once per hidden unit.
+  index = hidden_space.index_by_direction
+  start_idx = index[bases.BasisDirection(f"{hidden_name}start")]
+  ks = range(1, num_vals)
+  idx0 = np.array(
+      [index[bases.BasisDirection(hidden_name, (k, 0))] for k in ks], dtype=int
+  )
+  idx1 = np.array(
+      [index[bases.BasisDirection(hidden_name, (k, 1))] for k in ks], dtype=int
+  )
+  thresholds = np.asarray(value_thresholds, dtype=float)
+
+  one_magnitudes = np.zeros(hidden_space.num_dims)
+  one_magnitudes[start_idx] = 1
+  # hidden_k_0 = ReLU(L * (x - threshold[k]) + 1)
+  # hidden_k_1 = ReLU(L * (x - threshold[k]))
+  one_magnitudes[idx0] = 1 - large_number * thresholds
+  one_magnitudes[idx1] = -large_number * thresholds
+
+  other_magnitudes = np.zeros(hidden_space.num_dims)
+  other_magnitudes[idx0] = large_number
+  other_magnitudes[idx1] = large_number
+
   def action(direction: bases.BasisDirection) -> bases.VectorInBasis:
-    # hidden_k_0 = ReLU(L * (x - threshold[k]) + 1)
-    # hidden_k_1 = ReLU(L * (x - threshold[k]))
     if direction == one_direction:
-      hidden = hidden_space.vector_from_basis_direction(
-          bases.BasisDirection(f"{hidden_name}start")
-      )
-    else:
-      hidden = hidden_space.null_vector()
-    for k in range(1, num_vals):
-      vec0 = hidden_space.vector_from_basis_direction(
-          bases.BasisDirection(hidden_name, (k, 0))
-      )
-      vec1 = hidden_space.vector_from_basis_direction(
-          bases.BasisDirection(hidden_name, (k, 1))
-      )
-      if direction == one_direction:
-        hidden += (1 - large_number * value_thresholds[k - 1]) * vec0
-        hidden -= large_number * value_thresholds[k - 1] * vec1
-      else:
-        hidden += large_number * vec0 + large_number * vec1
-    return hidden
+      return hidden_space.make_vector(one_magnitudes.copy())
+    return hidden_space.make_vector(other_magnitudes.copy())
 
   return DiscretisingLayerMaterials(
       action=action, hidden_space=hidden_space, output_values=output_values

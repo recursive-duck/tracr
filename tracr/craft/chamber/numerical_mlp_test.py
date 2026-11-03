@@ -87,6 +87,74 @@ class NumericalMlpTest(tests_common.VectorFnTestCase):
 
     self.assertVectorAllClose(test_outputs, expected_results)
 
+  @parameterized.parameters(5, 10, 20)
+  def test_map_numerical_mlp_resolves_closely_spaced_values(self, max_len):
+    # Values are all means k / n of up to max_len binary values; the smallest
+    # gap between them is far below 2 / default large_number.
+    in_value_set = {
+        k / n for n in range(1, max_len + 1) for k in range(n + 1)
+    }
+    function = lambda x: x * 10
+
+    input_dir = bases.BasisDirection("input")
+    output_dir = bases.BasisDirection("output")
+    one_dir = bases.BasisDirection("one")
+    input_space = bases.VectorSpaceWithBasis([input_dir])
+    output_space = bases.VectorSpaceWithBasis([output_dir])
+    one_space = bases.VectorSpaceWithBasis([one_dir])
+
+    mlp = numerical_mlp.map_numerical_mlp(
+        f=function,
+        input_space=input_space,
+        output_space=output_space,
+        one_space=one_space,
+        input_value_set=in_value_set,
+    )
+
+    for x in sorted(in_value_set):
+      test_inputs = bases.VectorInBasis(
+          basis_directions=[input_dir, output_dir, one_dir],
+          magnitudes=np.array([x, 0, 1], dtype=np.float32),
+      )
+      expected_results = bases.VectorInBasis(
+          basis_directions=[input_dir, output_dir, one_dir],
+          magnitudes=np.array([0, function(x), 0], dtype=np.float32),
+      )
+      with self.subTest(x=x):
+        self.assertVectorAllClose(mlp.apply(test_inputs), expected_results)
+
+  def test_large_number_is_never_lowered(self):
+    # Well separated values: the requested large_number must be kept.
+    layer = numerical_mlp._get_discretising_layer(
+        input_value_set={0, 1, 2},
+        f=lambda x: x,
+        hidden_name="h",
+        one_direction=bases.BasisDirection("one"),
+        large_number=1000,
+    )
+    weight = layer.action(bases.BasisDirection("input"))
+    self.assertEqual(max(weight.magnitudes), 1000)
+
+  def test_effective_large_number_warns_beyond_float32_accuracy(self):
+    with self.assertLogs(level="WARNING"):
+      numerical_mlp._effective_large_number([0, 1e-6, 1], 100)
+
+  def test_near_duplicates_are_merged_onto_the_simple_fraction(self):
+    values = sorted([-5.5e-17, 0.0, 5.5e-17, 1 / 3, 1 / 3 + 1e-16, 1.0])
+    self.assertEqual(
+        numerical_mlp._merge_near_duplicates(values), [0.0, 1 / 3, 1.0]
+    )
+
+  @parameterized.parameters(
+      dict(values=[0, 0.001, 1], expected=4 / 0.001),
+      dict(values=[0, 1], expected=100),
+      dict(values=[3], expected=100),
+  )
+  def test_effective_large_number(self, values, expected):
+    self.assertAlmostEqual(
+        numerical_mlp._effective_large_number(values, 100), expected, places=6
+    )
+
   @parameterized.parameters([
       dict(in_value_set={0, 1, 2, 3}, x=1, function=lambda x: 1 / x, result=1),
       dict(
