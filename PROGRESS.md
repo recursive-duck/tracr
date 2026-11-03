@@ -53,3 +53,18 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Why:** there were no pins, no Python floor, no CI, and running tests dirtied the tree.
 - **How:** set `requires-python >=3.11` from uv resolution, since chex 0.1.92 needs it. Direct dependencies lock at the tested versions.
 - **Result:** built wheels hold the same 61 files, and a fresh install runs the README example. The workflow has not yet run on GitHub.
+
+## Averaging non-binary values (`d66a157`, 2026-11-03)
+
+- **What:** a numerical Aggregate of values other than 0 and 1 is now rejected at compile time.
+- **Why:** the guard checked `int(x)`, so 0.5 or 1.9 passed as binary and got an incomplete value set. A Map on their mean was wrong on 9/30 inputs at max_seq_len 4.
+- **How:** compare values directly in `basis_inference.py`, and remove the fallback that only those values reached.
+- **Result:** 9/30 wrong -> NotImplementedError. Suite 5,823 -> 5,827 passed.
+
+## Float32 error after combined means (`1a8d3d4`, 2026-11-03)
+
+- **What:** each step in a numerical MLP now gets a steepness sized to its own gap, not the smallest gap overall.
+- **Why:** one huge steepness made every hidden activation large, and float32 loses precision when it subtracts two large numbers. The same model in float64 was exact (error 1.21e-11).
+- **How:** `_threshold_large_numbers` in `numerical_mlp.py` returns L_k = max(L, 4 / gap_k) for each threshold.
+- **Result:** `pair_balance` then `x*10`, 60 inputs: max error 4.48e-03 -> 1.67e-04 at length 14, with wrong answers 55 -> 0; 4.76e-04 -> 3.43e-05 at length 10. Hidden sizes unchanged. Suite 5,827 -> 5,828 passed.
+- **Not measured:** length 20, because compile alone ran past a 1-minute limit.

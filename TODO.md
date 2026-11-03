@@ -2,8 +2,6 @@
 
 ## Backlog
 
-- fix-int-guard: Aggregate binary guard accepts values like 0.5, so a Map on their mean miscompiles [bugfix] #compiler #soundness #basis-inference
-- float32-composite-means: Map after a difference of two means loses accuracy from about max_seq_len 14 [bugfix] #compiler #float32 #numerical-mlp
 - ci-first-run: Confirm the GitHub Actions workflow passes on its first real run [productivity] #ci #github #verification
 
 ## In Progress
@@ -18,3 +16,5 @@
 - fix-copy-id: copy() keeps cached unique_id, so a copy can share a label with different encoding `497a089` [bugfix] #rasp #identity #labels
 - fix-validator-coverage: Validator passes unsupported exprs and dedups by name instead of label `5627996` [bugfix] #compiler #validation #errors
 - project-hygiene: Add .gitignore, python_requires, pinned deps and CI `ac64d3d` [productivity] #packaging #ci #repo
+- fix-int-guard: Aggregate binary guard accepts values like 0.5, so a Map on their mean miscompiles `d66a157` [bugfix] #compiler #soundness #basis-inference
+- float32-composite-means: Map after a difference of two means loses accuracy from about max_seq_len 14 `1a8d3d4` [bugfix] #compiler #float32 #numerical-mlp

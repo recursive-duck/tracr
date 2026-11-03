@@ -2,20 +2,6 @@
 
 ## Backlog
 
-- fix-int-guard: Aggregate binary guard accepts values like 0.5, so a Map on their mean miscompiles [bugfix] #compiler #soundness #basis-inference
-
-  `tracr/compiler/basis_inference.py` checks binary values through `int(x)`, and `int(0.5)` is 0, so `numerical(Map(t*0.5, tokens))` passes.
-  `Map(x>0.3, mean)` on it was wrong on 9/30 inputs at max_seq_len 4. First: [0,1,1] wants [F,F,T], got [F,F,F].
-  Such sets keep the old `value/n` approximation plus 0, so behaviour is no worse than before `37ab6aa`.
-  Likely fix: reject non-binary values outright with `x not in (0, 1)`.
-
-- float32-composite-means: Map after a difference of two means loses accuracy from about max_seq_len 14 [bugfix] #compiler #float32 #numerical-mlp
-
-  `pair_balance` followed by a Map has a much denser value set, so the ramp needs a very large L.
-  max_seq_len 10: L 10,080, `x<0`, `x==0`, `x*10` 0/100 wrong. max_seq_len 14: L 51,480, `x<0` and `x==0` 0/60 wrong, `x*10` off by about 3e-3 on 51/60 inputs.
-  That is beyond a 1e-3 tolerance but inside the repo's rtol=0.005. max_seq_len 20 needs L 310,080 and was not run.
-  A warning now logs above L = 2^15. The inferred set is also a loose over-approximation, because the two means are not independent.
-
 - ci-first-run: Confirm the GitHub Actions workflow passes on its first real run [productivity] #ci #github #verification
 
   `.github/workflows/test.yml` was only parsed as YAML and run as an equivalent local locked pytest on Python 3.11.
@@ -72,3 +58,17 @@
   `pyproject.toml` replaces `setup.py`, with `requires-python >=3.11` because chex 0.1.92 needs it. Adds `uv.lock`, `.gitignore` and a test workflow.
   Built wheels hold the same 61 files as before. A fresh install outside the repo imports every subpackage and runs the README example.
   See @ci-first-run for what is still unverified.
+
+- fix-int-guard: Aggregate binary guard accepts values like 0.5, so a Map on their mean miscompiles `d66a157` [bugfix] #compiler #soundness #basis-inference
+
+  The guard in `basis_inference.py` now compares values (`x == 0 or x == 1`) instead of `int(x)`, and the dead non-binary fallback is gone.
+  `Map(x>0.3, mean of t*0.5)` at max_seq_len 4: 9/30 wrong -> NotImplementedError at compile.
+  New test: 0.5, 1.9, -0.5 failed on the old code and are rejected now; 2 was already rejected. No existing test relied on non-binary means.
+
+- float32-composite-means: Map after a difference of two means loses accuracy from about max_seq_len 14 `1a8d3d4` [bugfix] #compiler #float32 #numerical-mlp
+
+  Root cause: precision only. Old code in float64 at max_seq_len 14 gives `x*10` max error 1.21e-11 vs 4.48e-03 in float32.
+  Fix: each threshold uses L_k = max(L, 4 / gap_k) for its own gap, so only close pairs get large activations.
+  `x*10`, 60 inputs: max_seq_len 10: 4.76e-04 -> 3.43e-05. max_seq_len 14: 4.48e-03 -> 1.67e-04, wrong (>1e-3) 55 -> 0. `x<0` stays 0/60. Hidden sizes unchanged.
+  max_seq_len 20 was skipped: compile alone ran past the 1-minute limit, so its error is unmeasured.
+  The inferred set is still a loose over-approximation, because the two means are not independent.
