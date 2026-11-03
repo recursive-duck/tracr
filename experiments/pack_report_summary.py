@@ -9,6 +9,7 @@ import os
 import statistics
 import tomllib
 
+from shrink_report import CFG as SHRINK_CFG
 from shrink_report_summary import fmt_count
 
 PLOT_NAME = "pack_report.png"
@@ -107,6 +108,13 @@ def write(rows, out_dir, cfg):
   diff_where = sorted({f"{v['prog']} V={r['V']} N={r['N']}" for r in ok
                        for v in r["verify"] if v["categorical"]
                        and v["max_abs_diff"] > cfg["tie_tol"]})
+  rasp_seqs = sum(v["sequences"] for v in checks)
+  rasp_orig = sum(v["rasp_mismatches_original"] for v in checks)
+  rasp_pack = sum(v["rasp_mismatches"] for v in checks)
+  rasp_where = sorted({f"{v['prog']} V={r['V']} N={r['N']}" for r in ok
+                       for v in r["verify"] if v["rasp_mismatches"]
+                       or v["rasp_mismatches_original"]})
+  rasp_err = max((v["rasp_max_abs_err"] for v in num), default=0.0)
   exhaustive = sum(all(v["verify"] == "exhaustive" for v in r["verify"])
                    for r in ok)
   last = [r["sweep"][-1] for r in ok]
@@ -173,6 +181,14 @@ def write(rows, out_dir, cfg):
       f"in categorical scores: {cat_diff:.2e}"
       + (f", above {cfg['tie_tol']:g} only in {'; '.join(diff_where)}."
          if diff_where else "."),
+      f"- Against the RASP program itself (rasp.fast_eval; positions where "
+      f"RASP gives None skipped; numerical outputs within "
+      f"{SHRINK_CFG['rasp_atol']:g} + {SHRINK_CFG['rasp_rtol']:g} * |RASP|), "
+      f"sequences whose decoded output differs: originals "
+      f"**{rasp_orig:,}**, packed tasks **{rasp_pack:,}**, each of "
+      f"{rasp_seqs:,}"
+      + (f", in {'; '.join(rasp_where)}." if rasp_where else ".")
+      + f" Largest numerical error vs RASP: {rasp_err:.2e}.",
       f"- All {k_max} programs, summed over configs: packed "
       f"{fmt_count(tot['params'])}, block-diagonal "
       f"{fmt_count(tot['params_block_diagonal'])} "
@@ -199,9 +215,9 @@ def write(rows, out_dir, cfg):
       "",
       "| V | N | width ↓ | widest | sum | bound | solver / status | packed ↓ "
       "| block-diagonal ↓ | x block ↑ | separate trim | separate reuse "
-      "| max gate ↓ | max weight ↓ | pack s | peak RSS MB |",
+      "| max gate ↓ | max weight ↓ | vs RASP ↓ | pack s | peak RSS MB |",
       "|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:"
-      "|---:|---:|",
+      "|---:|---:|---:|",
   ]
   for r in ok:
     s = r["sweep"][-1]
@@ -216,6 +232,7 @@ def write(rows, out_dir, cfg):
         f"| {_bold(xb, f'{xb:.2f}')} | {fmt_count(s['separate_trim'])} "
         f"| {fmt_count(s['separate_reuse'])} | {s['max_gate']:.2e} "
         f"| {s['max_weight']:.2e} "
+        f"| {sum(v['rasp_mismatches_original'] + v['rasp_mismatches'] for v in r['verify']):,} "
         f"| {s['pack_s']:.1f} | {r['peak_rss_mb']:,.0f} |")
   if failed:
     lines += ["", "Failed configs: " + ", ".join(
@@ -224,7 +241,9 @@ def write(rows, out_dir, cfg):
       "",
       "width = residual dims of the packed model; widest / sum = trimmed "
       "widths of the programs alone; bound = clique lower bound on width "
-      "for this conflict rule; x block = block-diagonal / packed params.",
+      "for this conflict rule; x block = block-diagonal / packed params; "
+      "vs RASP = sequences whose decoded output differs from RASP, summed "
+      "over the originals and the packed tasks.",
       "",
       "## What it means",
       "",
@@ -287,7 +306,13 @@ def write(rows, out_dir, cfg):
                    numerical_sequences=num_seqs,
                    numerical_not_bitwise_equal=num_bits,
                    max_abs_diff_numerical=num_diff,
-                   max_abs_diff_categorical=cat_diff, totals=tot,
+                   max_abs_diff_categorical=cat_diff,
+                   rasp_sequences=rasp_seqs,
+                   rasp_mismatches_original=rasp_orig,
+                   rasp_mismatches_packed=rasp_pack,
+                   rasp_max_abs_err_numerical=rasp_err,
+                   rasp_atol=SHRINK_CFG["rasp_atol"],
+                   rasp_rtol=SHRINK_CFG["rasp_rtol"], totals=tot,
                    width_vs_widest_median=statistics.median(width_vs_max),
                    overhead_vs_separate=overhead,
                    dsatur_meets_bound=meets, packs=len(packs),

@@ -2,7 +2,8 @@
 
 For each (program, V, N): compile, shrink with trim only and with dim reuse,
 then compare each shrunk model with the original on every input (small
-domains) or on random inputs (large ones). Settings live in config.toml
+domains) or on random inputs (large ones), and the original and each shrunk
+model with the RASP program itself. Settings live in config.toml
 [shrink_report]. Writes results.jsonl (one row per config, flushed), run.log,
 shrink_report.png and summary.md to out_dir.
 
@@ -33,7 +34,8 @@ OUT_DIR = os.path.join(ROOT, CFG["out_dir"])
 
 HEADER = (f"{'program':<16}{'V':>4}{'N':>4}{'params':>15}{'trim↓':>12}"
           f"{'reuse↓':>12}{'x_trim↑':>9}{'x_reuse↑':>10}{'d':>6}{'d_trim↓':>8}"
-          f"{'d_reuse↓':>9}{'seqs':>7}{'mism↓':>6}{'ties':>6}{'maxdiff↓':>10}"
+          f"{'d_reuse↓':>9}{'seqs':>7}{'mism↓':>6}{'ties':>6}{'rasp↓':>6}"
+          f"{'maxdiff↓':>10}"
           f"{'compile_s':>10}{'shrink_s':>9}")
 
 
@@ -80,6 +82,7 @@ def child(prog, V, N):
   import numpy as np
   from tracr.compiler import compiling
   from tracr.compiler import shrinking
+  import rasp_check
   program, vocab = build(prog, V, N)
   t0 = time.perf_counter()
   model = compiling.compile_rasp_to_model(
@@ -91,6 +94,13 @@ def child(prog, V, N):
   row: dict[str, Any] = dict(
       prog=prog, V=V, N=N, ok=True, compile_s=compile_s, nnz=nnz,
       verify=mode, domain=domain, layers=model.model_config.num_layers)
+  expected = rasp_check.expected_outputs(program, seqs)
+  tol = dict(batch_size=CFG["batch_size"], atol=CFG["rasp_atol"],
+             rtol=CFG["rasp_rtol"])
+  vs_rasp = rasp_check.check(rasp_check.original_output_values(model), model,
+                             seqs, expected, **tol)
+  row["rasp_mismatches"] = vs_rasp.mismatches
+  row["rasp_max_abs_err"] = vs_rasp.max_abs_err
   for reuse in (False, True):
     key = "reuse" if reuse else "trim"
     t0 = time.perf_counter()
@@ -98,11 +108,15 @@ def child(prog, V, N):
     shrink_s = time.perf_counter() - t0
     cmp = shrinking.compare(model, shrunk, seqs, CFG["batch_size"],
                             CFG["tie_tol"])
+    vs_rasp = rasp_check.check(shrunk.output_values, model, seqs, expected,
+                               **tol)
     row[key] = dict(vars(shrunk.stats), shrink_s=shrink_s,
                     sequences=cmp.sequences,
                     mismatches=cmp.decoded_mismatches,
                     tie_flips=cmp.tie_flips,
                     max_abs_diff=cmp.max_abs_diff,
+                    rasp_mismatches=vs_rasp.mismatches,
+                    rasp_max_abs_err=vs_rasp.max_abs_err,
                     categorical=shrunk.categorical_output)
     del shrunk
   rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -133,12 +147,13 @@ def fmt_row(r):
   mism = t["mismatches"] + u["mismatches"]
   ties = t["tie_flips"] + u["tie_flips"]
   diff = max(t["max_abs_diff"], u["max_abs_diff"])
+  rasp = r["rasp_mismatches"] + t["rasp_mismatches"] + u["rasp_mismatches"]
   return (f"{r['prog']:<16}{r['V']:>4}{r['N']:>4}{t['params_before']:>15,}"
           f"{t['params_after']:>12,}{u['params_after']:>12,}"
           f"{t['params_before'] / t['params_after']:>9.1f}"
           f"{t['params_before'] / u['params_after']:>10.1f}"
           f"{t['d_model_before']:>6}{t['d_model_after']:>8}"
-          f"{u['d_model_after']:>9}{t['sequences']:>7,}{mism:>6}{ties:>6}"
+          f"{u['d_model_after']:>9}{t['sequences']:>7,}{mism:>6}{ties:>6}{rasp:>6}"
           f"{diff:>10.1e}"
           f"{r['compile_s']:>10.1f}{t['shrink_s'] + u['shrink_s']:>9.1f}")
 
@@ -189,8 +204,11 @@ def main():
          "whose output differs where the original is decided (both modes): "
          "decoded token for categorical programs, any bit for numerical ones; "
          f"ties = sequences differing only where the original's top-2 scores "
-         f"are within {CFG['tie_tol']:g}; maxdiff = largest output value "
-         "difference")
+         f"are within {CFG['tie_tol']:g}; rasp = sequences whose decoded "
+         "output differs from the RASP program, summed over the original, "
+         "trim and reuse (positions where RASP gives None skipped; numerical "
+         f"within {CFG['rasp_atol']:g} + {CFG['rasp_rtol']:g} * |RASP|); "
+         "maxdiff = largest output value difference")
     emit(HEADER)
     t0 = time.perf_counter()
     with ThreadPoolExecutor(CFG["workers"]) as ex:

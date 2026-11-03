@@ -104,7 +104,9 @@ def _per_program(ok, cfg):
         big_trim=big["trim"]["params_after"],
         big_reuse=big["reuse"]["params_after"], big_nnz=big["nnz"],
         reuse_wins=sum(r["reuse"]["params_after"] < r["trim"]["params_after"]
-                       for r in rows)))
+                       for r in rows),
+        rasp_mismatches=sum(r["rasp_mismatches"] + r["trim"]["rasp_mismatches"]
+                            + r["reuse"]["rasp_mismatches"] for r in rows)))
   return table
 
 
@@ -133,6 +135,15 @@ def write(rows, out_dir, cfg):
   after_trim = sum(r["trim"]["params_after"] for r in ok)
   after_reuse = sum(r["reuse"]["params_after"] for r in ok)
   nnz = sum(r["nnz"] for r in ok)
+  rasp_seqs = sum(r["trim"]["sequences"] for r in ok)
+  rasp_orig = sum(r["rasp_mismatches"] for r in ok)
+  rasp_mode = {m: sum(r[m]["rasp_mismatches"] for r in ok) for m in modes}
+  rasp_where = sorted({f"{r['prog']} V={r['V']} N={r['N']}" for r in ok
+                       if r["rasp_mismatches"] or r["trim"]["rasp_mismatches"]
+                       or r["reuse"]["rasp_mismatches"]})
+  rasp_err = max((max(r["rasp_max_abs_err"], r["trim"]["rasp_max_abs_err"],
+                      r["reuse"]["rasp_max_abs_err"])
+                  for r in ok if not r["trim"]["categorical"]), default=0.0)
 
   lines = ["# Lossless shrink report", ""]
   lines += [
@@ -162,13 +173,22 @@ def write(rows, out_dir, cfg):
       f"{num_seqs:,}; largest difference {num_diff:.2e}.",
       f"- Largest difference in categorical output scores (before argmax): "
       f"{cat_diff:.2e}.",
+      f"- Against the RASP program itself (rasp.fast_eval; positions where "
+      f"RASP gives None skipped; numerical outputs within "
+      f"{cfg['rasp_atol']:g} + {cfg['rasp_rtol']:g} * |RASP|), sequences "
+      f"whose decoded output differs: original **{rasp_orig:,}**, trim "
+      f"**{rasp_mode['trim']:,}**, reuse **{rasp_mode['reuse']:,}**, each of "
+      f"{rasp_seqs:,}"
+      + (f", in {'; '.join(rasp_where)}." if rasp_where else ".")
+      + f" Largest numerical error vs RASP: {rasp_err:.2e}.",
       f"- Dense params summed over all configs: {fmt_count(before)} -> "
       f"{fmt_count(after_trim)} (trim) -> {fmt_count(after_reuse)} (reuse); "
       f"nonzero weights in the originals: {fmt_count(nnz)}.",
       "",
       "| program | configs | median x trim ↑ | median x reuse ↑ | median x d_model ↑ "
-      "| reuse smaller | largest (V, N) | params before | trim ↓ | reuse ↓ | nonzero |",
-      "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|",
+      "| reuse smaller | largest (V, N) | params before | trim ↓ | reuse ↓ | nonzero "
+      "| vs RASP ↓ |",
+      "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|",
   ]
   for t in table:
     lines.append(
@@ -176,7 +196,7 @@ def write(rows, out_dir, cfg):
         f"| {t['median_x_reuse']:.1f} | {t['median_x_d']:.2f} "
         f"| {t['reuse_wins']}/{t['configs']} | ({t['big_V']}, {t['big_N']}) "
         f"| {t['big_before']:,} | {t['big_trim']:,} | {t['big_reuse']:,} "
-        f"| {t['big_nnz']:,} |")
+        f"| {t['big_nnz']:,} | {t['rasp_mismatches']:,} |")
   if failed:
     lines += ["", "Failed configs: " + ", ".join(
         f"{r['prog']} V={r['V']} N={r['N']} ({r['err']})" for r in failed)]
@@ -184,7 +204,9 @@ def write(rows, out_dir, cfg):
       "",
       "x = dense params before / after. d_model is the residual width. "
       "\"reuse smaller\" counts configs where reuse beat trim only; reuse can "
-      "lose because each erased dim costs two MLP units.",
+      "lose because each erased dim costs two MLP units. \"vs RASP\" sums, over "
+      "the program's configs, the sequences whose decoded output differs "
+      "from RASP for the original, trim and reuse.",
       "",
       "## What it means",
       "",
@@ -225,7 +247,13 @@ def write(rows, out_dir, cfg):
                    max_abs_diff_numerical=num_diff,
                    max_abs_diff_categorical=cat_diff, params_before=before,
                    params_trim=after_trim, params_reuse=after_reuse,
-                   nonzero=nnz, per_program=table,
+                   nonzero=nnz, rasp_sequences=rasp_seqs,
+                   rasp_mismatches_original=rasp_orig,
+                   rasp_mismatches_trim=rasp_mode["trim"],
+                   rasp_mismatches_reuse=rasp_mode["reuse"],
+                   rasp_max_abs_err_numerical=rasp_err,
+                   rasp_atol=cfg["rasp_atol"], rasp_rtol=cfg["rasp_rtol"],
+                   per_program=table,
                    explanation="\n".join(lines)), f, indent=1)
   return lines + [f"wrote {os.path.join(out_dir, PLOT_NAME)}",
                   f"wrote {os.path.join(out_dir, SUMMARY_NAME)}"]

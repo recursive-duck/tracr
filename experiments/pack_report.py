@@ -38,7 +38,7 @@ HEAVY_SLOTS = threading.Semaphore(CFG["heavy_workers"])
 HEADER = (f"{'V':>4}{'N':>4}{'K':>4}{'d_pack↓':>8}{'d_max':>7}{'d_sum':>7}"
           f"{'bound':>7}{'solver':>8}{'packed↓':>12}{'block↓':>13}"
           f"{'separate':>12}{'x_block↑':>9}{'seqs':>7}{'mism↓':>6}{'ties':>6}"
-          f"{'nbits':>6}{'maxdiff↓':>10}{'max_gate↓':>10}{'max_w↓':>9}"
+          f"{'nbits':>6}{'rasp↓':>6}{'maxdiff↓':>10}{'max_gate↓':>10}{'max_w↓':>9}"
           f"{'pack_s':>7}{'total_s':>8}")
 
 
@@ -46,8 +46,9 @@ def child(V, N):
   from tracr.compiler import compiling
   from tracr.compiler import packing
   from tracr.compiler import shrinking
+  import rasp_check
   t_start = time.perf_counter()
-  names, models, inputs, programs = [], [], [], []
+  names, models, inputs, programs, expected = [], [], [], [], []
   for prog in CFG["programs"]:
     program, vocab = shrink_report.build(prog, V, N)
     t0 = time.perf_counter()
@@ -65,6 +66,7 @@ def child(V, N):
     names.append(prog)
     models.append(model)
     inputs.append((seqs, mode))
+    expected.append(rasp_check.expected_outputs(program, seqs))
     print(f"V={V} N={N} compiled {prog} in {compile_s:.1f} s", file=sys.stderr,
           flush=True)
   options = dict(gate_scale=CFG["gate_scale"], gate_offset=CFG["gate_offset"],
@@ -88,9 +90,20 @@ def child(V, N):
   for i, (model, (seqs, mode)) in enumerate(zip(models, inputs)):
     cmp = shrinking.compare(model, packed.task(i), seqs, CFG["batch_size"],
                             CFG["tie_tol"])
+    tol = dict(batch_size=CFG["batch_size"],
+               atol=shrink_report.CFG["rasp_atol"],
+               rtol=shrink_report.CFG["rasp_rtol"])
+    orig = rasp_check.check(rasp_check.original_output_values(model), model,
+                            seqs, expected[i], **tol)
+    pack = rasp_check.check(packed.task(i).output_values, model, seqs,
+                            expected[i], **tol)
     verify.append(dict(prog=names[i], verify=mode, sequences=cmp.sequences,
                        mismatches=cmp.decoded_mismatches,
                        tie_flips=cmp.tie_flips, max_abs_diff=cmp.max_abs_diff,
+                       rasp_mismatches_original=orig.mismatches,
+                       rasp_mismatches=pack.mismatches,
+                       rasp_max_abs_err=max(orig.max_abs_err,
+                                            pack.max_abs_err),
                        categorical=model.categorical_output))
   rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
   row: dict[str, Any] = dict(
@@ -129,11 +142,12 @@ def fmt_rows(r):
   ties = sum(x["tie_flips"] for x in v)
   bits = sum(x["mismatches"] for x in v if not x["categorical"])
   diff = max(x["max_abs_diff"] for x in v)
+  rasp = sum(x["rasp_mismatches_original"] + x["rasp_mismatches"] for x in v)
   out = []
   for s in r["sweep"]:
     last = s["K"] == len(r["sweep"])
-    check = (f"{seqs:>7,}{mism:>6}{ties:>6}{bits:>6}{diff:>10.1e}" if last
-             else f"{'-':>7}{'-':>6}{'-':>6}{'-':>6}{'-':>10}")
+    check = (f"{seqs:>7,}{mism:>6}{ties:>6}{bits:>6}{rasp:>6}{diff:>10.1e}"
+             if last else f"{'-':>7}{'-':>6}{'-':>6}{'-':>6}{'-':>6}{'-':>10}")
     bound = s["slots_lower_bound"] + s["gate_slots"] + s["position_slots"]
     out.append(
         f"{r['V']:>4}{r['N']:>4}{s['K']:>4}{s['d_model']:>8}"
@@ -171,7 +185,12 @@ def main():
          "mism = categorical sequences whose decoded output differs where the "
          "original is decided; ties = differ only where its top-2 scores are "
          f"within {CFG['tie_tol']:g}; nbits = numerical sequences not bitwise "
-         "equal; maxdiff = largest output value difference.")
+         "equal; rasp = sequences whose decoded output differs from the RASP "
+         "program, summed over the originals and the packed tasks "
+         "(positions where RASP gives None skipped; numerical within "
+         f"{shrink_report.CFG['rasp_atol']:g} + "
+         f"{shrink_report.CFG['rasp_rtol']:g} * |RASP|); maxdiff = largest "
+         "output value difference.")
     emit("started: " + ", ".join(f"V={V} N={N}" for V, N in jobs))
     emit(HEADER)
     t0 = time.perf_counter()
