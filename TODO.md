@@ -2,10 +2,17 @@
 
 ## Backlog
 
+- ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink [experiment] #superposition #ilp #packing
 
 ## In Progress
 
 ## Done
+
+- lossless-shrink: Shrink compiled models with identical outputs: fewer dims, heads and units, per-layer shapes `04fb553` [perf] #compression #exactness #residual
+  - shrink-trim: Drop never-read dims, padding heads, unused key columns and dead MLP units `04fb553` [perf] #compression #assemble #padding
+  - shrink-reuse: Reuse residual dims after their last read, erasing old values with 2 MLP units each `04fb553` [perf] #compression #liveness #register-allocation
+  - shrink-verify: Shrunk and original models agree on every input of small domains, sampled on large ones `04fb553` [experiment] #verification #exactness #testing
+  - shrink-report: Dense params before -> after for 10 lib programs over vocab and length `04fb553` [experiment] #compression #scaling #report
 
 - repo-analysis: Understand tracr and verify suspected issues by measurement `9ce2b8c` [experiment] #analysis #compiler #baseline
 - fix-key-size: Compile crashes when value dims exceed query/key dims, e.g. vocab 6 with max_seq_len 3 `8cfa45b` [bugfix] #compiler #assemble #crash

@@ -2,9 +2,40 @@
 
 ## Backlog
 
+- ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink [experiment] #superposition #ilp #packing
+
+  Gate every block on a task token, so one program's values are zero while another runs and both can share residual dims.
+  An integer program picks layer, head slot and dims per block; dims shared across programs force separate heads.
+  Goal: dense params grow about K instead of K^2 for K programs, with outputs identical to each program alone.
+
 ## In Progress
 
 ## Done
+
+- lossless-shrink: Shrink compiled models with identical outputs: fewer dims, heads and units, per-layer shapes `04fb553` [perf] #compression #exactness #residual
+
+  Scaling sweep (2026-11-03, scratchpad): 0.05-4.9% of dense params are nonzero, and every layer is padded to the widest one.
+  Peak simultaneously-live residual dims are 28-81% of d_model at V=8, N=8.
+  `tracr/compiler/shrinking.py`: `shrink(model, reuse)` and `compare(model, shrunk, inputs, batch_size, tie_tol)`. Report in `experiments/shrink_report/`.
+
+  - shrink-trim: Drop never-read dims, padding heads, unused key columns and dead MLP units `04fb553` [perf] #compression #assemble #padding
+
+    Iterate to a fixed point, since removing a head or unit can make more dims unread. Keep the original logit divisor sqrt(key_size).
+    Dense params over 160 configs: 3,559,320,080 -> 38,013,232. shuffle_dyck2 V=32 N=32: 893,494,508 -> 132,320.
+
+  - shrink-reuse: Reuse residual dims after their last read, erasing old values with 2 MLP units each `04fb553` [perf] #compression #liveness #register-allocation
+
+    Greedy interval colouring by birth time is optimal for intervals. Units ReLU(x) and ReLU(-x) write -x exactly, for any sign.
+    Further 38,013,232 -> 37,601,684 overall; smaller than trim in 81/160 configs. Erase units cost more than the dims saved for length, hist, sort_unique, sort.
+
+  - shrink-verify: Shrunk and original models agree on every input of small domains, sampled on large ones `04fb553` [experiment] #verification #exactness #testing
+
+    Tests: 48 cases, every input up to length 4, causal and non-causal, both modes. Report: 0 decided mismatches in 66,880 categorical comparisons.
+    29 sort_freq N=32 reuse sequences flip at the original's own ties (float64 margin <= 2.5e-15); trim and reuse agree to 3.97e-12 in float64 there.
+
+  - shrink-report: Dense params before -> after for 10 lib programs over vocab and length `04fb553` [experiment] #compression #scaling #report
+
+    160 configs, V and N in {4,8,16,32}, 523 s on 8 workers. Median reduction 1.9x (length, hist) to 436x (shuffle_dyck2, reuse).
 
 - repo-analysis: Understand tracr and verify suspected issues by measurement `9ce2b8c` [experiment] #analysis #compiler #baseline
 
