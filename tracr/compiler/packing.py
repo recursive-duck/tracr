@@ -69,7 +69,7 @@ ONEHOT_BOUNDS = True
 # Balance each unit's input and output weights with a power-of-2 scale.
 REBALANCE = True
 # Default time limit for the integer program, in seconds.
-ILP_TIME_LIMIT_S = 60.0
+ILP_TIME_LIMIT_S = 5.0
 # Skip the integer program if its constraint matrix has more nonzeros.
 ILP_MAX_NONZEROS = 20_000_000
 

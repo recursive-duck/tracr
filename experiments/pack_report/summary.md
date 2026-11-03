@@ -15,28 +15,28 @@ Baselines: block-diagonal stacking (the same blocks, each program in its own dim
 - All 10 programs, summed over configs: packed 62,076,515, block-diagonal 132,620,160 (2.14x the packed model), separate trimmed models 38,013,232 (packed is 1.63x that), separate reused models 37,601,684.
 - Residual width of the full pack / widest program alone: median 1.10, max 1.54. Sum of widths / packed width: median 2.49.
 - Cost of one model over K separate trimmed models (dense params ratio, median over configs), K: packed / block-diagonal: 1: 1.00 / 1.00, 2: 1.17 / 1.59, 3: 1.31 / 2.24, 4: 1.33 / 3.15, 5: 1.62 / 3.21, 6: 1.57 / 3.43, 7: 1.60 / 3.56, 8: 1.65 / 3.75, 9: 1.77 / 4.44, 10: 1.84 / 4.87.
-- Layout: DSatur meets the clique bound in 128 of 160 packs. The integer program ran 32 times: proved optimal 13, beat DSatur 0, hit the 60 s limit 15, skipped as too large 4. Shared slots above the bound: max 3, median 0.
+- Layout: DSatur meets the clique bound in 128 of 160 packs. The integer program ran 32 times: proved optimal 8, beat DSatur 0, hit the 5 s limit 20, skipped as too large 4. Shared slots above the bound: max 3, median 0.
 
 Full pack (10 programs) per config:
 
 | V | N | width ↓ | widest | sum | bound | solver / status | packed ↓ | block-diagonal ↓ | x block ↑ | separate trim | separate reuse | max gate ↓ | max weight ↓ | pack s | peak RSS MB |
 |---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 4 | 4 | 62 | 50 | 243 | 61 | dsatur: HiGHS Status 7: Optimal | 51,274 | 200,961 | **3.92** | 29,301 | 25,821 | 2.01e+02 | 1.00e+02 | 0.2 | 1,170 |
-| 4 | 8 | 130 | 118 | 395 | 129 | dsatur: HiGHS Status 7: Optimal | 187,590 | 569,985 | **3.04** | 96,549 | 91,177 | 5.77e+02 | 1.00e+02 | 2.9 | 1,093 |
-| 4 | 16 | 362 | 350 | 795 | 361 | dsatur: HiGHS Status 7: Optimal | 1,142,110 | 2,508,225 | 2.20 | 601,989 | 588,993 | 2.18e+03 | 1.00e+02 | 53.9 | 1,868 |
-| 4 | 32 | 1,210 | 1,198 | 1,979 | 1,209 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 10,283,790 | 16,819,521 | 1.64 | 6,117,957 | 6,063,601 | 8.45e+03 | 1.28e+02 | 147.7 | 9,574 |
-| 8 | 4 | 91 | 59 | 307 | 88 | dsatur: HiGHS Status 7: Optimal | 92,729 | 312,833 | **3.37** | 44,273 | 39,891 | 2.01e+02 | 1.00e+02 | 0.3 | 1,040 |
-| 8 | 8 | 138 | 126 | 475 | 137 | dsatur: HiGHS Status 7: Optimal | 234,462 | 807,025 | **3.44** | 132,209 | 125,233 | 5.77e+02 | 1.00e+02 | 2.9 | 1,135 |
-| 8 | 16 | 370 | 358 | 907 | 369 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,309,430 | 3,209,873 | 2.45 | 708,977 | 693,193 | 2.18e+03 | 1.00e+02 | 157.6 | 1,910 |
-| 8 | 32 | 1,218 | 1,206 | 2,155 | 1,217 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 11,131,302 | 19,694,545 | 1.77 | 6,487,409 | 6,426,361 | 8.45e+03 | 1.28e+02 | 139.2 | 9,527 |
-| 16 | 4 | 155 | 107 | 435 | 152 | dsatur: HiGHS Status 7: Optimal | 217,465 | 610,305 | 2.81 | 89,193 | 85,051 | 2.01e+02 | 1.00e+02 | 0.9 | 1,165 |
-| 16 | 8 | 224 | 179 | 635 | 221 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 495,264 | 1,403,985 | 2.83 | 241,161 | 233,179 | 5.77e+02 | 1.00e+02 | 114.4 | 1,336 |
-| 16 | 16 | 386 | 374 | 1,131 | 385 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,662,502 | 4,871,217 | 2.93 | 1,042,761 | 1,020,729 | 2.18e+03 | 1.00e+02 | 93.5 | 2,063 |
-| 16 | 32 | 1,234 | 1,222 | 2,507 | 1,233 | dsatur: skipped: 21,382,094 nonzeros > 20,000,000 | 12,857,046 | 26,120,433 | 2.03 | 7,657,929 | 7,582,825 | 8.45e+03 | 1.28e+02 | 6.7 | 8,163 |
-| 32 | 4 | 283 | 203 | 691 | 280 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 614,393 | 1,500,161 | 2.44 | 238,937 | 237,375 | 2.01e+02 | 1.00e+02 | 88.4 | 1,633 |
-| 32 | 8 | 416 | 339 | 955 | 413 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,345,760 | 3,089,425 | 2.30 | 609,593 | 602,219 | 5.77e+02 | 1.00e+02 | 63.2 | 2,049 |
-| 32 | 16 | 688 | 611 | 1,579 | 685 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 4,019,984 | 9,226,097 | 2.30 | 2,189,561 | 2,166,507 | 2.18e+03 | 1.00e+02 | 88.2 | 3,693 |
-| 32 | 32 | 1,266 | 1,254 | 3,211 | 1,265 | dsatur: skipped: 31,278,094 nonzeros > 20,000,000 | 16,431,414 | 41,675,569 | 2.54 | 11,725,433 | 11,619,529 | 8.45e+03 | 1.28e+02 | 5.7 | 9,014 |
+| 4 | 4 | 62 | 50 | 243 | 61 | dsatur: HiGHS Status 7: Optimal | 51,274 | 200,961 | **3.92** | 29,301 | 25,821 | 2.01e+02 | 1.00e+02 | 0.2 | 1,167 |
+| 4 | 8 | 130 | 118 | 395 | 129 | dsatur: HiGHS Status 7: Optimal | 187,590 | 569,985 | **3.04** | 96,549 | 91,177 | 5.77e+02 | 1.00e+02 | 3.6 | 1,104 |
+| 4 | 16 | 362 | 350 | 795 | 361 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,142,110 | 2,508,225 | 2.20 | 601,989 | 588,993 | 2.18e+03 | 1.00e+02 | 30.3 | 1,707 |
+| 4 | 32 | 1,210 | 1,198 | 1,979 | 1,209 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 10,283,790 | 16,819,521 | 1.64 | 6,117,957 | 6,063,601 | 8.45e+03 | 1.28e+02 | 18.2 | 8,257 |
+| 8 | 4 | 91 | 59 | 307 | 88 | dsatur: HiGHS Status 7: Optimal | 92,729 | 312,833 | **3.37** | 44,273 | 39,891 | 2.01e+02 | 1.00e+02 | 0.3 | 1,018 |
+| 8 | 8 | 138 | 126 | 475 | 137 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 234,462 | 807,025 | **3.44** | 132,209 | 125,233 | 5.77e+02 | 1.00e+02 | 9.5 | 1,140 |
+| 8 | 16 | 370 | 358 | 907 | 369 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,309,430 | 3,209,873 | 2.45 | 708,977 | 693,193 | 2.18e+03 | 1.00e+02 | 15.8 | 1,918 |
+| 8 | 32 | 1,218 | 1,206 | 2,155 | 1,217 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 11,131,302 | 19,694,545 | 1.77 | 6,487,409 | 6,426,361 | 8.45e+03 | 1.28e+02 | 17.4 | 8,644 |
+| 16 | 4 | 155 | 107 | 435 | 152 | dsatur: HiGHS Status 7: Optimal | 217,465 | 610,305 | 2.81 | 89,193 | 85,051 | 2.01e+02 | 1.00e+02 | 1.3 | 1,188 |
+| 16 | 8 | 224 | 179 | 635 | 221 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 495,264 | 1,403,985 | 2.83 | 241,161 | 233,179 | 5.77e+02 | 1.00e+02 | 6.5 | 1,315 |
+| 16 | 16 | 386 | 374 | 1,131 | 385 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,662,502 | 4,871,217 | 2.93 | 1,042,761 | 1,020,729 | 2.18e+03 | 1.00e+02 | 6.1 | 2,169 |
+| 16 | 32 | 1,234 | 1,222 | 2,507 | 1,233 | dsatur: skipped: 21,382,094 nonzeros > 20,000,000 | 12,857,046 | 26,120,433 | 2.03 | 7,657,929 | 7,582,825 | 8.45e+03 | 1.28e+02 | 5.4 | 8,399 |
+| 32 | 4 | 283 | 203 | 691 | 280 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 614,393 | 1,500,161 | 2.44 | 238,937 | 237,375 | 2.01e+02 | 1.00e+02 | 5.8 | 1,705 |
+| 32 | 8 | 416 | 339 | 955 | 413 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 1,345,760 | 3,089,425 | 2.30 | 609,593 | 602,219 | 5.77e+02 | 1.00e+02 | 6.9 | 2,137 |
+| 32 | 16 | 688 | 611 | 1,579 | 685 | dsatur: HiGHS Status 13: model_status is Time limit reached; primal_status is None | 4,019,984 | 9,226,097 | 2.30 | 2,189,561 | 2,166,507 | 2.18e+03 | 1.00e+02 | 7.3 | 3,974 |
+| 32 | 32 | 1,266 | 1,254 | 3,211 | 1,265 | dsatur: skipped: 31,278,094 nonzeros > 20,000,000 | 16,431,414 | 41,675,569 | 2.54 | 11,725,433 | 11,619,529 | 8.45e+03 | 1.28e+02 | 5.0 | 9,275 |
 
 width = residual dims of the packed model; widest / sum = trimmed widths of the programs alone; bound = clique lower bound on width for this conflict rule; x block = block-diagonal / packed params.
 
