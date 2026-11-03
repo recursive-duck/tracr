@@ -156,3 +156,12 @@ After all seven commits together: 5,823 passed, 1 xfailed, 892 subtests passed i
 - **Result:** 0 of 7,200 compiled outputs differ from RASP. Trimmed params lib -> bits: sort N=8 V=32 41,100 -> 82,401 (bits 2.0x larger), V=256 1,084,492 -> 944,328 (1.15x smaller); sort V=N=32 334,572 -> 354,599. **At V=256 query/key params drop 3.5x (579,784 -> 164,688)** but MLP params grow 4.1x (75,624 -> 311,856), and layers go 3 -> 7-8. Categorical summing is 25x lib at V=N=32, so numerical is the default.
 - **Limits:** 200 random inputs per job beyond V=4, N=5; nothing run near vocab 100k or context 1M. Each bit level adds a SelectorWidth MLP of about 2N units, so at large N the saving reverses until counting is fixed (@bit-count). Token embedding and value copy (512 of 584 dims at V=256) need bit outputs (@bit-encoding).
 - **Report:** `experiments/bitsplit_compare/summary.md`.
+
+## Bit arithmetic circuits (`c6d16ed`, `10b8008`, 2026-11-03 13:35, worker C)
+
+- **What:** new `tracr/compiler/lib_arith.py`: adders on lists of 2-valued S-Ops (bits-only ripple, ripple with fused KPG tables, Kogge-Stone), plus a probe of lookup-table vs bit-circuit addition for w = 2..10 bits.
+- **Why:** adding two w-bit values with one categorical SequenceMap needs a lookup over all 2^w x 2^w pairs; a bit circuit needs a few units per bit.
+- **How:** carry generate/propagate per bit as small MLPs; one 8-row table per bit beats two 4-row tables (16 vs 20 units per bit). 43 tests; full suite 6,028 passed, 1 xfailed.
+- **Result:** at w=7 (widest lookup that compiled) lookup -> ripple KPG: **MLP units 16,384 -> 436 (37.6x), trimmed params 16,909,824 -> 718,185 (23.5x), compile 156.9 s -> 4.2 s**, layers 1 -> 11. Lookup stops compiling within 300 s at w=8. Adder cost is linear: 16w-8 units (KPG), 20w-12 (4-row). Kogge-Stone at w=10: 11 layers vs 15 (ripple KPG) and 24 (bits-only ripple). 0 mismatches in 16,016 checks against RASP and integer addition (43 configs, 42 compiled, 1 timeout).
+- **Limits:** only the adder is O(w); the whole model is still about 2^(1.6w) params because inputs and output are one-hot 2^w values (`from_bits` is 2,184 of 2,376 units at w=10). Compile times are from a laptop at load ~380. w >= 5 checks are random samples (102 per config at w=10, cut from 200 by a token cap in config.toml); exhaustive only to w=4.
+- **Report:** `experiments/bit_arith/summary.md`.

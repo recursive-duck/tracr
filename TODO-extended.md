@@ -14,10 +14,6 @@
 
   End goal: 2-tier LLM, small reasoning model + tool calls (Wikipedia-like DB) linked by shared ids. ~7M articles = 23 bits, 100M+ Wikidata items = 27 bits; do not fit an 18-bit vocab as single tokens. Open: entity count, scratch vs pretrained tokenizer, semantic vs stable-arbitrary ids (DSI 2022, TIGER 2023).
 
-- exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
-
-  Planned for worker C once bit-arith reports. Exact EQ/copy over bit codes so ids in tool calls are never corrupted.
-
 - hybrid-train: Frozen compiled modules inside trainable layers; check training leaves them exact @llm-shapes [experiment] #training #modules #exactness
 
   Needs llm-shapes first.
@@ -38,15 +34,19 @@
 
     Worker A. New rasp encoding (bits), basis inference, embed/unembed, MLP read/write of bit values. Probe EQ at V=N in {256, 1,024, 4,096} vs one-hot: dims, params, compile time, compiled vs RASP.
 
-  - bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm [feature] #mlp #arithmetic #bits
-
-    Worker C. Ripple-carry adder, increment, compare over lists of 2-valued S-ops. New module tracr/compiler/lib_arith.py. Measure units/layers vs a categorical SequenceMap adding two values of width w = 4..10 bits.
-
   - scale-check: Vectorized RASP evaluator; shrink/pack reports check against RASP, not only the compiled original @scale-to-llm [feature] #verification #evaluator #reports
 
     Worker D. New module tracr/rasp/fast_eval.py (numpy, batched). Reports add a mism-vs-RASP column. Closes the leftover from fix-logit-scale.
 
+  - exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
+
+    Worker C (started 2026-11-03 13:40). Exact EQ/copy over bit codes so ids in tool calls are never corrupted. Reuse lib_bits/lib_arith/bit encoding; exhaustive k<=3 digits, <=3 IDs; probe units/params/layers/compile time vs ID length and number of IDs.
+
 ## Done
+
+- bit-arith: Adders and comparators as small MLP circuits on bits instead of m1*m2 lookup tables @scale-to-llm `c6d16ed` `10b8008` [feature] #mlp #arithmetic #bits
+
+  Worker C. lib_arith: ripple KPG and Kogge-Stone adders on 2-valued S-Ops. At w=7: 37.6x fewer MLP units than a lookup table. Leftovers: Brent-Kung; numerical 1-dim bit encoding (AND/XOR in 1-2 units), per-layer MLP width, linear from_bits (decode is 2,184 of 2,376 units at w=10).
 
 - bitsplit-compare: Less-than as log2(m) AND heads over bit prefixes; make_sort on bit-split counts @scale-to-llm `f7f7011` [perf] #attention #sort #bits
 
