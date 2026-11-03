@@ -27,7 +27,12 @@ another program must then write exactly zero:
 * MLP units: each unit gets weight -M on the `one` dim of every other program.
   That dim is 1 at every position of its own task and 0 otherwise, so the gate
   adds an exact 0 for the unit's own task and pushes the unit below zero for
-  any other. M is twice a sound bound on the unit's input, plus one.
+  any other. M for task j is twice a sound upper bound on the unit's input
+  while task j runs, plus one: only task j's values born before the unit's
+  layer and the shared positions are nonzero then. Bounds are intervals
+  pushed through the layers; categorical dims also stay in [0, 1].
+  Each unit's input and output weights are then balanced by a power of 2,
+  which keeps outputs bitwise equal and the largest weights smaller.
 
 Values of one program never share a slot (nothing is erased). Two values of
 different programs conflict if one is read into attention values after the
@@ -59,6 +64,10 @@ _ONE_LABEL = "one"
 # Default gate: M = GATE_SCALE * bound + GATE_OFFSET for a unit's input bound.
 GATE_SCALE = 2.0
 GATE_OFFSET = 1.0
+# Bound categorical dims by [0, 1] when sizing gates.
+ONEHOT_BOUNDS = True
+# Balance each unit's input and output weights with a power-of-2 scale.
+REBALANCE = True
 # Default time limit for the integer program, in seconds.
 ILP_TIME_LIMIT_S = 60.0
 # Skip the integer program if its constraint matrix has more nonzeros.
@@ -77,6 +86,7 @@ class PackedLayer:
   divisors: Tuple[float, ...]  # logit divisor per head, from its program
   w1: np.ndarray  # [D, units]
   w2: np.ndarray  # [units, D]
+  unit_task: np.ndarray  # [units] task that owns each MLP unit
 
 
 @dataclasses.dataclass
@@ -108,7 +118,8 @@ class PackStats:
   mlp_units: int
   params: int
   params_block_diagonal: int  # same blocks, no shared dims
-  max_gate: float
+  max_gate: float  # largest gate before rebalancing
+  max_weight: float  # largest |weight| of the packed model
 
 
 @dataclasses.dataclass
@@ -257,25 +268,55 @@ def _value_reads(p: _Program) -> np.ndarray:
   return last
 
 
-def _bounds(p: _Program) -> np.ndarray:
-  """Sound bound on |value| of each dim at any time and position."""
-  b = np.abs(p.te).max(0) + np.abs(p.pe).max(0)
+def _affine(w, lo, hi):
+  """Interval of w.T @ x for x in the box [lo, hi]."""
+  w = w.astype(np.float64)
+  pos, neg = np.maximum(w, 0), np.minimum(w, 0)
+  return pos.T @ lo + neg.T @ hi, pos.T @ hi + neg.T @ lo
+
+
+def _intervals(p: _Program, onehot: bool) -> Tuple[np.ndarray, np.ndarray]:
+  """Sound [lo, hi] of each dim after each time, as two [2L + 1, d] arrays.
+
+  Row t holds the residual after time t (0 = embedding), so a block at time t
+  reads row t - 1. With onehot, categorical dims (labels "name:value") are also
+  kept in [0, 1]: tracr writes one-hot vectors or averages of them there.
+  """
+  d = len(p.dims)
+  cat = np.array([":" in s for s in p.model.residual_labels]) & onehot
+
+  def clamp(lo, hi):
+    return (np.where(cat, np.clip(lo, 0, 1), lo),
+            np.where(cat, np.clip(hi, 0, 1), hi))
+
+  lo, hi = clamp(p.te.min(0) + p.pe.min(0), p.te.max(0) + p.pe.max(0))
+  lo, hi = lo.astype(np.float64), hi.astype(np.float64)
+  rows_lo, rows_hi = [lo], [hi]
   for l, layer in enumerate(p.layers):
     t_attn, t_mlp = 2 * l + 1, 2 * l + 2
     rd = p.readable(t_attn)
-    write = np.zeros_like(b)
+    w_lo, w_hi = np.zeros(d), np.zeros(d)
     for h in range(layer["v"].shape[1]):
       cols = p.vv[l][h]
       if not cols.any():
         continue
-      vb = np.abs(layer["v"][rd][:, h, cols]).T @ b[rd]  # attention averages
-      write += vb @ np.abs(layer["o"][h, cols])
-    b = b + write * p.writable(t_attn)
-    rd = p.readable(t_mlp)
-    w1 = layer["w1"][:, p.units[l]]
-    hb = np.abs(w1[rd]).T @ b[rd]
-    b = b + (hb @ np.abs(layer["w2"][p.units[l]])) * p.writable(t_mlp)
-  return b
+      # Attention averages value vectors, so each column stays in its box.
+      v_lo, v_hi = _affine(layer["v"][rd][:, h, cols], lo[rd], hi[rd])
+      o_lo, o_hi = _affine(layer["o"][h, cols], v_lo, v_hi)
+      w_lo, w_hi = w_lo + o_lo, w_hi + o_hi
+    wr = p.writable(t_attn)
+    lo, hi = clamp(lo + w_lo * wr, hi + w_hi * wr)
+    rows_lo.append(lo)
+    rows_hi.append(hi)
+    rd, units = p.readable(t_mlp), p.units[l]
+    h_lo, h_hi = _affine(layer["w1"][rd][:, units], lo[rd], hi[rd])
+    o_lo, o_hi = _affine(layer["w2"][units], np.maximum(h_lo, 0),
+                         np.maximum(h_hi, 0))
+    wr = p.writable(t_mlp)
+    lo, hi = clamp(lo + o_lo * wr, hi + o_hi * wr)
+    rows_lo.append(lo)
+    rows_hi.append(hi)
+  return np.stack(rows_lo), np.stack(rows_hi)
 
 
 def _conflicts(prog_of, birth, vread):
@@ -384,16 +425,24 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
          gate_offset: float = GATE_OFFSET,
          ilp_time_limit_s: float = ILP_TIME_LIMIT_S,
          ilp_max_nonzeros: int = ILP_MAX_NONZEROS,
-         force_ilp: bool = False) -> PackedModel:
+         force_ilp: bool = False,
+         onehot_bounds: bool = ONEHOT_BOUNDS,
+         rebalance: bool = REBALANCE) -> PackedModel:
   """Packs compiled programs into one model; task i runs models[i].
 
   Args:
     models: assembled models with the same max_seq_len and causal setting.
     names: task names, default "task0", "task1", ...
-    gate_scale, gate_offset: M = gate_scale * bound + gate_offset per unit.
+    gate_scale, gate_offset: a unit's gate for task j is gate_scale times a
+      bound on its input while task j runs, plus gate_offset.
     ilp_time_limit_s: time limit for the integer program.
     ilp_max_nonzeros: skip the integer program if its matrix is larger.
     force_ilp: run the integer program even if DSatur meets the clique bound.
+    onehot_bounds: bound categorical dims by [0, 1] (tracr writes one-hot
+      vectors or averages of them there), not only by interval arithmetic.
+    rebalance: scale each unit's input weights by 1/c and output weights by c,
+      c a power of 2, so its largest input and output weights are balanced.
+      ReLU(x / c) * c = ReLU(x), and powers of 2 scale floats exactly.
   """
   names = list(names) if names is not None else [
       f"task{i}" for i in range(len(models))]
@@ -430,7 +479,6 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
   base = k + len(pos_labels)
 
   prog_of, birth, vread, owner = [], [], [], []
-  bounds = [_bounds(p) for p in progs]
   for i, p in enumerate(progs):
     reads = _value_reads(p)
     if np.any(reads[p.pos & p.dims] >= 0):
@@ -472,11 +520,19 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
         f"{progs[i].name}/{progs[i].model.residual_labels[d]}")
   width = base + shared
 
-  # Bound on each slot's value under any task, for the MLP gates.
-  slot_bound = np.zeros(width, dtype=np.float64)
+  # Interval of each slot while task i runs, after each time: [k, end, width].
+  # Only task i's values and the shared positions are nonzero then.
+  slot_lo = np.zeros((k, end, width))
+  slot_hi = np.zeros((k, end, width))
   for i, p in enumerate(progs):
+    lo, hi = _intervals(p, onehot_bounds)
+    rows = np.minimum(np.arange(end), len(lo) - 1)  # values persist
     live = slot_of[i] >= 0
-    np.maximum.at(slot_bound, slot_of[i][live], bounds[i][live])
+    slot_lo[i][:, slot_of[i][live]] = lo[rows][:, live]
+    slot_hi[i][:, slot_of[i][live]] = hi[rows][:, live]
+    for j, label in enumerate(pos_labels):
+      slot_lo[i, :, k + j] = pos_cols[label].min()
+      slot_hi[i, :, k + j] = pos_cols[label].max()
 
   def place(target, i, src, mask):
     """Rows src[d] for dims in mask go to target[slot_of[d]]."""
@@ -515,7 +571,7 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
   max_gate = 0.0
   for l in range(max(len(p.layers) for p in progs)):
     t_attn, t_mlp = 2 * l + 1, 2 * l + 2
-    wq, wk, wv, wo, w1, w2 = [], [], [], [], [], []
+    wq, wk, wv, wo, w1, w2, unit_task = [], [], [], [], [], [], []
     qk_sizes, v_sizes, divisors = [], [], []
     for i, p in enumerate(progs):
       if l >= len(p.layers):
@@ -545,12 +601,25 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
         place(b1, i, layer["w1"][:, units], rd)
         b2 = np.zeros((len(units), width), dtype)
         place(b2.T, i, layer["w2"][units].T, wr)
-        gate = gate_scale * (np.abs(b1).T @ slot_bound) + gate_offset
+        # Largest input of each unit while task j runs, before gating: [k, u].
+        pos_w = np.maximum(b1, 0).astype(np.float64)
+        neg_w = np.minimum(b1, 0).astype(np.float64)
+        need = slot_hi[:, t_mlp - 1] @ pos_w + slot_lo[:, t_mlp - 1] @ neg_w
+        gate = gate_scale * np.maximum(need, 0) + gate_offset
         others = [j for j in range(k) if j != i]
-        b1[others] = -gate.astype(dtype)
-        max_gate = max(max_gate, float(gate.max()))
+        b1[others] = -gate[others].astype(dtype)
+        if others:
+          max_gate = max(max_gate, float(gate[others].max()))
+        if rebalance:
+          a, b = np.abs(b1).max(0), np.abs(b2).max(1)
+          ok = (a > 0) & (b > 0)
+          shift = np.round(np.log2(np.where(ok, a, 1) / np.where(ok, b, 1)) / 2)
+          c = np.exp2(shift).astype(dtype)
+          b1 /= c
+          b2 *= c[:, None]
         w1.append(b1)
         w2.append(b2)
+        unit_task.append(np.full(len(units), i))
 
     def cat(blocks, axis, shape):
       return np.concatenate(blocks, axis=axis) if blocks else np.zeros(
@@ -561,7 +630,9 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
         wv=cat(wv, 1, (width, 0)), wo=cat(wo, 0, (0, width)),
         qk_sizes=tuple(qk_sizes), v_sizes=tuple(v_sizes),
         divisors=tuple(divisors), w1=cat(w1, 1, (width, 0)),
-        w2=cat(w2, 0, (0, width))))
+        w2=cat(w2, 0, (0, width)),
+        unit_task=(np.concatenate(unit_task) if unit_task
+                   else np.zeros(0, dtype=int))))
   if not np.isfinite(max_gate) or max_gate >= np.finfo(dtype).max / 4:
     raise ValueError(f"Gate {max_gate:.3e} does not fit in {dtype}.")
 
@@ -581,5 +652,7 @@ def pack(models: Sequence[assemble.AssembledTransformerModel],
       ilp_status=status, heads=sum(len(l.v_sizes) for l in layers),
       mlp_units=n_units, params=packed.num_params,
       params_block_diagonal=d_block * (cols + 2 * n_units + emb_rows),
-      max_gate=max_gate)
+      max_gate=max_gate,
+      max_weight=max(float(np.abs(w).max(initial=0.0)) for l in layers
+                     for w in (l.wq, l.wk, l.wv, l.wo, l.w1, l.w2)))
   return packed

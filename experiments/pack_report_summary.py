@@ -199,9 +199,9 @@ def write(rows, out_dir, cfg):
       "",
       "| V | N | width ↓ | widest | sum | bound | solver / status | packed ↓ "
       "| block-diagonal ↓ | x block ↑ | separate trim | separate reuse "
-      "| max gate | pack s | peak RSS MB |",
+      "| max gate ↓ | max weight ↓ | pack s | peak RSS MB |",
       "|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:"
-      "|---:|",
+      "|---:|---:|",
   ]
   for r in ok:
     s = r["sweep"][-1]
@@ -215,6 +215,7 @@ def write(rows, out_dir, cfg):
         f"| {fmt_count(s['params'])} | {fmt_count(s['params_block_diagonal'])} "
         f"| {_bold(xb, f'{xb:.2f}')} | {fmt_count(s['separate_trim'])} "
         f"| {fmt_count(s['separate_reuse'])} | {s['max_gate']:.2e} "
+        f"| {s['max_weight']:.2e} "
         f"| {s['pack_s']:.1f} | {r['peak_rss_mb']:,.0f} |")
   if failed:
     lines += ["", "Failed configs: " + ", ".join(
@@ -266,8 +267,12 @@ def write(rows, out_dir, cfg):
       "conflict rule only: no erasing, all programs starting at layer 0, "
       "one dim per value. Other rules can give narrower models.",
       "- The K sweep uses one program order; other orders give other curves.",
-      "- Gates are very large weights (see max gate). They are exact here, "
-      "but such a model is not a sensible starting point for training.",
+      "- Gates come from sound interval bounds, not from the inputs seen. "
+      f"The largest gate is {max(r['sweep'][-1]['max_gate'] for r in ok):.3g}"
+      " and the largest weight after rebalancing "
+      f"{max(r['sweep'][-1]['max_weight'] for r in ok):.3g}. They hold for "
+      "any input, but they are not shown to be the smallest gates that do, "
+      "and the model is not shown to be a good starting point for training.",
       "- Dense params include zeros inside kept blocks.",
       "",
       f"Plot: {PLOT_NAME}",

@@ -43,6 +43,46 @@ def _compiled(name, causal=False, max_seq_len=_MAX_SEQ_LEN):
   return model, vocab
 
 
+def _packed_ids(packed, task, inputs):
+  """Every input of a task as packed token ids, padded to max_seq_len + 1."""
+  t = packed.tasks[task]
+  enc = t.input_encoder
+  ids = np.full((len(inputs), _MAX_SEQ_LEN + 1), enc.pad_encoding, np.int32)
+  for r, x in enumerate(inputs):
+    encoded = enc.encode([enc.bos_token] + list(x))
+    ids[r, :len(encoded)] = encoded
+  return ids + t.token_offset
+
+
+def _preactivations(packed, ids):
+  """MLP unit inputs of every layer, [B, T, units] each, in float64."""
+  seq_len = ids.shape[1]
+  x = packed.token_embed[ids].astype(np.float64) + packed.pos_embed[:seq_len]
+  mask = np.repeat(~packed.is_pad[ids][:, None, :], seq_len, axis=1)
+  if packed.causal:
+    mask &= np.tril(np.ones((seq_len, seq_len), dtype=bool))[None]
+  out = []
+  for layer in packed.layers:
+    q, k, v = x @ layer.wq, x @ layer.wk, x @ layer.wv
+    qk_edges = np.cumsum((0,) + layer.qk_sizes)
+    v_edges = np.cumsum((0,) + layer.v_sizes)
+    heads = []
+    for h, div in enumerate(layer.divisors):
+      qs = slice(qk_edges[h], qk_edges[h + 1])
+      logits = np.einsum("btd,bTd->btT", q[..., qs], k[..., qs]) / div
+      logits = np.where(mask, logits, -np.inf)
+      weights = np.exp(logits - logits.max(-1, keepdims=True))
+      weights /= weights.sum(-1, keepdims=True)
+      vs = slice(v_edges[h], v_edges[h + 1])
+      heads.append(np.einsum("btT,bTd->btd", weights, v[..., vs]))
+    if heads:
+      x = x + np.concatenate(heads, axis=-1) @ layer.wo
+    pre = x @ layer.w1
+    out.append(pre)
+    x = x + np.maximum(pre, 0) @ layer.w2
+  return out
+
+
 class PackTest(parameterized.TestCase):
 
   def assert_tasks_match(self, names, packed, causal=False):
@@ -108,6 +148,41 @@ class PackTest(parameterized.TestCase):
       wrong += result.decoded_mismatches + (result.max_abs_diff
                                             > _NUMERICAL_ATOL)
     self.assertGreater(wrong, 0)
+
+  @parameterized.parameters(False, True)
+  def test_gates_shut_every_other_unit_on_every_input(self, onehot_bounds):
+    names = list(shrinking_test._programs())
+    packed = packing.pack([_compiled(n)[0] for n in names], names,
+                          onehot_bounds=onehot_bounds)
+    for i, name in enumerate(names):
+      with self.subTest(name):
+        inputs = shrinking_test._all_inputs(_compiled(name)[1], _MAX_SEQ_LEN)
+        pre = _preactivations(packed, _packed_ids(packed, i, inputs))
+        for layer, p in zip(packed.layers, pre):
+          other = layer.unit_task != i
+          if other.any():
+            self.assertLess(p[..., other].max(), 0.0)
+
+  def test_onehot_bounds_give_smaller_gates(self):
+    names = list(shrinking_test._programs())
+    models = [_compiled(n)[0] for n in names]
+    loose = packing.pack(models, names, onehot_bounds=False)
+    tight = packing.pack(models, names, onehot_bounds=True)
+    self.assertLess(tight.stats.max_gate, loose.stats.max_gate)
+
+  def test_rebalancing_keeps_outputs_bitwise_and_shrinks_weights(self):
+    names = list(shrinking_test._programs())
+    models = [_compiled(n)[0] for n in names]
+    plain = packing.pack(models, names, rebalance=False)
+    balanced = packing.pack(models, names, rebalance=True)
+    self.assertLess(balanced.stats.max_weight, plain.stats.max_weight)
+    for i, name in enumerate(names):
+      with self.subTest(name):
+        inputs = shrinking_test._all_inputs(_compiled(name)[1], _MAX_SEQ_LEN)
+        ids = _packed_ids(plain, i, inputs) - plain.tasks[i].token_offset
+        np.testing.assert_array_equal(
+            np.asarray(plain.output_values(i, ids)),
+            np.asarray(balanced.output_values(i, ids)))
 
   def test_rejects_different_lengths(self):
     with self.assertRaisesRegex(ValueError, "max_seq_len"):

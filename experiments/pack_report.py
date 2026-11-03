@@ -38,7 +38,8 @@ HEAVY_SLOTS = threading.Semaphore(CFG["heavy_workers"])
 HEADER = (f"{'V':>4}{'N':>4}{'K':>4}{'d_pack↓':>8}{'d_max':>7}{'d_sum':>7}"
           f"{'bound':>7}{'solver':>8}{'packed↓':>12}{'block↓':>13}"
           f"{'separate':>12}{'x_block↑':>9}{'seqs':>7}{'mism↓':>6}{'ties':>6}"
-          f"{'nbits':>6}{'maxdiff↓':>10}{'max_gate':>10}{'pack_s':>7}{'total_s':>8}")
+          f"{'nbits':>6}{'maxdiff↓':>10}{'max_gate↓':>10}{'max_w↓':>9}"
+          f"{'pack_s':>7}{'total_s':>8}")
 
 
 def child(V, N):
@@ -68,7 +69,9 @@ def child(V, N):
           flush=True)
   options = dict(gate_scale=CFG["gate_scale"], gate_offset=CFG["gate_offset"],
                  ilp_time_limit_s=CFG["ilp_time_limit_s"],
-                 ilp_max_nonzeros=CFG["ilp_max_nonzeros"])
+                 ilp_max_nonzeros=CFG["ilp_max_nonzeros"],
+                 onehot_bounds=CFG["onehot_bounds"],
+                 rebalance=CFG["rebalance"])
   sweep = []
   packed = None
   for k in range(1, len(models) + 1):
@@ -138,7 +141,7 @@ def fmt_rows(r):
         f"{s['solver']:>8}{s['params']:>12,}{s['params_block_diagonal']:>13,}"
         f"{s['separate_trim']:>12,}"
         f"{s['params_block_diagonal'] / s['params']:>9.2f}{check}"
-        f"{s['max_gate']:>10.1e}{s['pack_s']:>7.1f}"
+        f"{s['max_gate']:>10.1e}{s['max_weight']:>9.1e}{s['pack_s']:>7.1f}"
         f"{r['total_s'] if last else 0:>8.0f}")
   return out
 

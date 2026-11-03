@@ -39,6 +39,10 @@ timeout_s = 3600
 # MLP gate weight per unit: gate_scale * bound on its input + gate_offset.
 gate_scale = 2.0
 gate_offset = 1.0
+# Bound categorical dims by [0, 1] when sizing gates.
+onehot_bounds = true
+# Balance each unit's input and output weights by a power of 2 (exact).
+rebalance = true
 ilp_time_limit_s = 60.0
 ilp_max_nonzeros = 20_000_000
 batch_size = 32
