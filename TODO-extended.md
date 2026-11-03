@@ -2,13 +2,27 @@
 
 ## Backlog
 
+## In Progress
+
 - ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink [experiment] #superposition #ilp #packing
 
   Gate every block on a task token, so one program's values are zero while another runs and both can share residual dims.
   An integer program picks layer, head slot and dims per block; dims shared across programs force separate heads.
   Goal: dense params grow about K instead of K^2 for K programs, with outputs identical to each program alone.
+  Probe at V=8, N=8, 10 programs (scratchpad): block-diagonal D 385, 792,715 params; gated MLPs D 129 (max single program 126), 219,171; 10 separate models 125,233.
+  Without gates (MLP reads must see zeros) D 205. Erasing every dead dim cuts D to 108 but adds units: 357,156.
 
-## In Progress
+  - pack-model: Task-tagged token ids, gated MLPs, shared residual slots; each task matches its program [feature] #packing #gating #exactness
+
+    A block of another program is silent: attention value reads see zeros, MLP units get -M per other task's `one` dim, M from a sound bound.
+    Positional table shared (identical across programs, never value-read). Per-head logit divisors. No erasing, all programs start at layer 0.
+
+  - pack-layout: Slots by DSatur colouring, certified by a clique bound, integer program when they differ [perf] #ilp #colouring #residual
+
+    Conflict: same program, or a value-read of one after the other's birth. Cliques per (program, time) give the bound and the ILP rows.
+
+  - pack-report: Width and params vs number of programs: packed vs block-diagonal vs separate [experiment] #scaling #superposition #report
+
 
 ## Done
 

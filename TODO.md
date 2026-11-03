@@ -2,9 +2,13 @@
 
 ## Backlog
 
-- ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink [experiment] #superposition #ilp #packing
 
 ## In Progress
+
+- ilp-packing: Pack many programs into one model with task gating, layout chosen by an integer program @lossless-shrink [experiment] #superposition #ilp #packing
+  - pack-model: Task-tagged token ids, gated MLPs, shared residual slots; each task matches its program [feature] #packing #gating #exactness
+  - pack-layout: Slots by DSatur colouring, certified by a clique bound, integer program when they differ [perf] #ilp #colouring #residual
+  - pack-report: Width and params vs number of programs: packed vs block-diagonal vs separate [experiment] #scaling #superposition #report
 
 ## Done
 
@@ -13,7 +17,6 @@
   - shrink-reuse: Reuse residual dims after their last read, erasing old values with 2 MLP units each `04fb553` [perf] #compression #liveness #register-allocation
   - shrink-verify: Shrunk and original models agree on every input of small domains, sampled on large ones `04fb553` [experiment] #verification #exactness #testing
   - shrink-report: Dense params before -> after for 10 lib programs over vocab and length `04fb553` [experiment] #compression #scaling #report
-
 - repo-analysis: Understand tracr and verify suspected issues by measurement `9ce2b8c` [experiment] #analysis #compiler #baseline
 - fix-key-size: Compile crashes when value dims exceed query/key dims, e.g. vocab 6 with max_seq_len 3 `8cfa45b` [bugfix] #compiler #assemble #crash
 - fix-pad-mask: PAD is never masked, so indices-keyed selectors change output when padded `49d45f8` [bugfix] #compiler #transformer #padding

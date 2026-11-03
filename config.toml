@@ -23,3 +23,28 @@ tie_tol = 1e-5
 # Configs with at least this many dense params start first.
 heavy_params = 100_000_000
 out_dir = "experiments/shrink_report"
+
+[pack_report]
+# Packs the first K programs, K = 1..len(programs), in this order. Inputs
+# (vocab tokens, exhaustive limit, samples, seed) follow [shrink_report].
+programs = ["length", "reverse", "hist", "sort_unique", "sort", "sort_freq",
+            "frac_prevs", "pair_balance", "shuffle_dyck2", "count_less_freq"]
+vocab_sizes = [4, 8, 16, 32]
+max_seq_lens = [4, 8, 16, 32]
+compiler_bos = "BOS"
+# One process per (V, N); an N=32 one holds about 4 GB of dense weights and
+# peaks near 8 GB while compiling shuffle_dyck2.
+workers = 8
+timeout_s = 3600
+# MLP gate weight per unit: gate_scale * bound on its input + gate_offset.
+gate_scale = 2.0
+gate_offset = 1.0
+ilp_time_limit_s = 60.0
+ilp_max_nonzeros = 20_000_000
+batch_size = 32
+tie_tol = 1e-5
+# Configs with this max_seq_len start first, at most heavy_workers at once
+# (about 12 GB each).
+heavy_n = 32
+heavy_workers = 3
+out_dir = "experiments/pack_report"
