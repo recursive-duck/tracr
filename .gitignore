@@ -1,0 +1,27 @@
+# Python bytecode and caches.
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# Virtual environments. uv creates .venv; never sync one between machines.
+.venv/
+venv/
+env/
+ENV/
+
+# Build and distribution output.
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# macOS metadata.
+.DS_Store

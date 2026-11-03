@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor is requires-python in pyproject.toml (3.11).
+        python-version: ["3.11", "3.12", "3.13"]
+    env:
+      JAX_PLATFORMS: cpu
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+      - name: Install locked dependencies and the test extra
+        run: uv sync --locked --extra test --python ${{ matrix.python-version }}
+      - name: Run tests
+        run: uv run --locked --extra test pytest tracr -n auto -q -p no:cacheprovider
