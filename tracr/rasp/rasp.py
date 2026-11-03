@@ -140,7 +140,11 @@ class RASPExpr(abc.ABC):
 
   def copy(self: RASPExprT) -> RASPExprT:
     """Returns a shallow copy of this RASPExpr with a new ID."""
-    return copy.copy(self)
+    new = copy.copy(self)
+    # `unique_id` is a cached_property, so the shallow copy would otherwise
+    # inherit the original's ID if that ID had already been read.
+    new.__dict__.pop("unique_id", None)
+    return new
 
   @property
   def label(self) -> str:

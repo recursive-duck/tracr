@@ -484,6 +484,34 @@ class CopyTest(parameterized.TestCase):
     for child_id, copy_child_id in zip(child_ids, copy_child_ids):
       self.assertEqual(child_id, copy_child_id)
 
+  def test_copy_changes_id_after_original_id_was_read(self):
+    expr = rasp.Map(lambda x: x + 1, rasp.tokens)
+    _ = expr.unique_id  # Caches the ID on the original.
+    self.assertNotEqual(expr.copy().unique_id, expr.unique_id)
+
+  def test_copy_changes_label_after_original_label_was_read(self):
+    expr = rasp.Map(lambda x: x + 1, rasp.tokens)
+    _ = expr.label  # Caches the ID on the original.
+    self.assertNotEqual(expr.copy().label, expr.label)
+
+  def test_numerical_after_reading_label_has_distinct_label(self):
+    expr = rasp.Map(lambda x: x + 1, rasp.tokens)
+    _ = expr.label
+    numerical_expr = rasp.numerical(expr)
+    self.assertEqual(rasp.get_encoding(numerical_expr),
+                     rasp.Encoding.NUMERICAL)
+    self.assertEqual(rasp.get_encoding(expr), rasp.Encoding.CATEGORICAL)
+    self.assertNotEqual(numerical_expr.label, expr.label)
+
+  @parameterized.named_parameters(
+      ("tokens", rasp.tokens, "tokens"),
+      ("indices", rasp.indices, "indices"),
+      ("length", rasp.length, "length"),
+  )
+  def test_primitive_labels_are_stable_after_copy(self, expr, label):
+    self.assertEqual(expr.copy().label, label)
+    self.assertEqual(expr.named("renamed").label, label)
+
 
 class AggregateTest(parameterized.TestCase):
   """Tests for Aggregate."""

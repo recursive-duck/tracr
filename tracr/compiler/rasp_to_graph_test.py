@@ -85,6 +85,26 @@ class ExtractRaspGraphTest(parameterized.TestCase):
         [rasp.tokens, rasp.indices],
     )
 
+  def test_numerical_and_categorical_versions_are_distinct_nodes(self):
+    x = rasp.Map(lambda t: t + 1, rasp.tokens)
+    _ = x.label  # Reading the label used to cache the ID the copy inherited.
+    program = rasp.SequenceMap(lambda a, b: a + b, x, rasp.numerical(x))
+
+    graph = rasp_to_graph.extract_rasp_graph(program).graph
+
+    # tokens, x (categorical), numerical(x), and the sink.
+    self.assertLen(graph.nodes, 4)
+    map_encodings = [
+        rasp.get_encoding(data[nodes.EXPR])
+        for data in graph.nodes.values()
+        if isinstance(data[nodes.EXPR], rasp.Map)
+    ]
+    self.assertCountEqual(
+        map_encodings,
+        [rasp.Encoding.CATEGORICAL, rasp.Encoding.NUMERICAL],
+    )
+
+
 class _BudgetedExpr:
   """Shared counter: fails the test if too many children reads happen."""
 
