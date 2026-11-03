@@ -89,3 +89,30 @@ child_timeout_s = 3600
 # Processes computing the RASP reference outputs.
 rasp_workers = 3
 out_dir = "experiments/bit_encoding"
+
+[bit_arith]
+# a + b of two w-bit numbers (a = tokens, b = indices, max_seq_len 2^w) as
+# one lookup-table SequenceMap vs lib_arith bit circuits. The lookup chain
+# runs widths in order and stops at its first failure.
+widths = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+methods = ["ripple_kpg", "ripple_pair", "ripple_bits", "kogge_stone"]
+compiler_bos = "BOS"
+# Random full-length inputs per config, seeded with seed + w, run through
+# the dense compiled model: `samples` of them, but at most
+# dense_token_budget tokens in all (200 up to w=9, 102 at w=10).
+samples = 200
+dense_token_budget = 105_000
+seed = 0
+batch_size = 8
+# One process per (method, w), killed after timeout_s for a lookup table
+# (the 5 min limit: the chain stops there) and bit_timeout_s for a circuit.
+timeout_s = 300
+bit_timeout_s = 1200
+workers = 3
+# Skip a lookup width whose dense MLP weights (4^w units x 2 x d_model x
+# bytes_per_param, d_model ~ 2^(w+2)) exceed this many GB.
+mem_budget_gb = 16
+bytes_per_param = 4
+# Ratios at least this large are bold in summary.md.
+bold_ratio = 3.0
+out_dir = "experiments/bit_arith"

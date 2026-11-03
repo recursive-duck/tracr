@@ -1,0 +1,83 @@
+bit_arith: 36 bit-circuit configs + lookup chain over w=[2, 3, 4, 5, 6, 7, 8, 9, 10] on 3 workers, timeout 300 s per lookup and 1200 s per bit circuit config -> /Users/unsalgokdag/git/professional/tracr/.claude/worktrees/agent-a4ce9ce0757bcc847/experiments/bit_arith
+units = MLP hidden units from value sets; live = units with nonzero input weights; circuit/decode = adder/table vs from_bits units; mism_* = sequences (of seqs) differing from rasp.evaluate / integer a + b
+method         w     units↓      live↓  circuit↓  decode↓ layers↓ d_model d_trim↓         params      p_trim↓ compile_s↓  seqs mism_rasp↓ mism_int↓ rss_gb
+lookup         2         16         16        16        0       1      18      16            901          688        2.8   200          0         0    0.3
+lookup         3         64         64        64        0       1      34      32          5,269        4,704        3.1   200          0         0    0.3
+lookup         4        256        256       256        0       1      66      64         36,757       35,008        2.9   200          0         0    0.4
+lookup         5      1,024      1,024     1,024        0       1     130     128        276,757      270,720        3.9   200          0         0    0.4
+lookup         6      4,096      4,096     4,096        0       1     258     256      2,152,981    2,130,688       12.9   200          0         0    0.4
+lookup         7     16,384     16,384    16,384        0       1     514     512     16,995,349   16,909,824      156.9   200          0         0    0.8
+lookup         8  FAIL timeout > 300 s
+ripple_kpg    10      2,376      2,376       152    2,184      15   4,342   4,340    276,099,467   29,525,020       79.3   102          0         0    2.8
+ripple_pair   10      2,412      2,412       188    2,184      15   4,351   4,349    276,671,696   29,899,375       82.5   102          0         0    2.8
+ripple_kpg     9      1,292      1,292       136    1,120      14   2,243   2,241     66,817,647    8,092,251       18.0   200          0         0    1.0
+ripple_pair    9      1,324      1,324       168    1,120      14   2,251   2,249     67,055,911    8,265,075       30.2   200          0         0    1.0
+kogge_stone   10      2,520      2,520       296    2,184      11   4,390   4,388    207,112,031   31,115,308       76.9   102          0         0    2.3
+ripple_bits    9      1,324      1,324       168    1,120      22   2,267   2,265    104,791,999    8,323,875       26.7   200          0         0    1.4
+ripple_bits   10      2,412      2,412       188    2,184      24   4,369   4,367    439,129,355   30,023,125      163.2   102          0         0    3.9
+ripple_kpg     8        736        736       120      584      13   1,184   1,182     16,470,215    2,348,634        9.4   200          0         0    0.5
+kogge_stone    9      1,409      1,409       253    1,120      10   2,282   2,280     49,226,164    8,766,600       20.9   200          0         0    0.8
+ripple_pair    8        764        764       148      584      13   1,191   1,189     16,567,550    2,429,127       12.1   200          0         0    0.6
+ripple_kpg     7        436        436       104      304      11     637     635      3,797,458      718,185        4.2   200          0         0    0.4
+ripple_pair    7        460        460       128      304      11     643     641      3,833,200      755,739        6.8   200          0         0    0.4
+kogge_stone    8        826        826       210      584      10   1,214   1,212     13,134,560    2,626,404        7.9   200          0         0    0.5
+ripple_bits    8        764        764       148      584      20   1,205   1,203     25,453,875    2,457,729        9.7   200          0         0    0.6
+ripple_kpg     6        276        276        88      164      10     358     356        986,168      243,148        3.3   200          0         0    0.4
+kogge_stone    7        508        508       176      304       9     661     659      3,255,112      840,225        4.1   200          0         0    0.4
+ripple_bits    7        460        460       128      304      17     655     653      5,941,978      769,887        4.8   200          0         0    0.4
+ripple_pair    6        296        296       108      164      10     363     361        999,923      261,003        3.3   200          0         0    0.4
+kogge_stone    6        330        330       142      164       9     376     374        937,043      295,834        3.0   200          0         0    0.4
+ripple_bits    6        296        296       108      164      15     373     371      1,516,718      268,233        3.1   200          0         0    0.4
+ripple_kpg     5        180        180        72       88       9     207     205        264,114       87,535        3.1   200          0         0    0.4
+ripple_pair    5        196        196        88       88       9     211     209        269,206       95,931        2.9   200          0         0    0.4
+ripple_bits    5        196        196        88       88      13     219     217        397,042       99,603        3.0   200          0         0    0.4
+kogge_stone    5        216        216       108       88       8     219     217        249,977      108,283        3.3   200          0         0    0.4
+ripple_kpg     4        120        120        56       48       8     124     122         74,060       33,550        3.1   200          0         0    0.4
+ripple_pair    4        132        132        68       48       8     127     125         75,845       37,375        3.2   200          0         0    0.4
+ripple_bits    4        132        132        68       48      11     133     131        107,450       39,169        3.4   200          0         0    0.4
+kogge_stone    4        138        138        74       48       8     130     128         77,630       39,808        3.1   200          0         0    0.4
+ripple_kpg     3         76         76        40       24       6      73      71         18,145       12,141        3.1   200          0         0    0.4
+ripple_pair    3         84         84        48       24       6      75      73         22,263       13,651        3.2   200          0         0    0.4
+kogge_stone    3         85         85        49       24       6      76      74         23,476       13,986        3.2   200          0         0    0.4
+ripple_bits    3         84         84        48       24       8      79      77         35,845       14,399        3.3   200          0         0    0.4
+ripple_kpg     2         44         44        24       12       5      42      40          6,837        3,960        3.6   200          0         0    0.4
+ripple_pair    2         48         48        28       12       5      43      41          8,738        4,387        3.0   200          0         0    0.4
+ripple_bits    2         48         48        28       12       6      45      43         10,869        4,601        3.1   200          0         0    0.4
+kogge_stone    2         44         44        24       12       5      42      40          6,837        3,960        3.2   200          0         0    0.4
+done 43 configs in 1407 s
+
+# Bit arithmetic vs lookup table
+
+## What was tested
+
+a + b for a = tokens (vocab 0..2^w-1) and b = indices (max_seq_len 2^w), compiled as one lookup-table SequenceMap and as bit circuits from tracr/compiler/lib_arith.py, for w = 2..10. Every bit program reads its bits with to_bits Maps (encode) and returns one categorical value through from_bits (decode). Each compiled model ran on 200 random full-length inputs (seed 0 + w; fewer when they would exceed 105,000 tokens, see seqs) against rasp.evaluate and integer a + b.
+
+Terms: units = MLP hidden units (one ReLU each) from the value sets; circuit = units of the adder alone (or of the table); layers = attention+MLP layer pairs; d_trim / p_trim = residual width and dense params after shrinking.shrink(reuse=False).
+
+## Key numbers
+
+- Configs: 42 compiled and checked, 1 not: lookup w=8: timeout > 300 s
+- Mismatching sequences vs RASP + vs integers: 0 of 16,016 comparisons.
+- Largest lookup that compiled: w=7, 16,384 units, 16,909,824 trimmed params, 156.9 s.
+  - ripple_kpg at w=7: units 16,384 -> 436 (**37.6x**), circuit 16,384 -> 104, params_trim 16,909,824 -> 718,185 (**23.5x**), layers 1 -> 11, compile 156.9 -> 4.2 s.
+  - ripple_pair at w=7: units 16,384 -> 460 (**35.6x**), circuit 16,384 -> 128, params_trim 16,909,824 -> 755,739 (**22.4x**), layers 1 -> 11, compile 156.9 -> 6.8 s.
+  - ripple_bits at w=7: units 16,384 -> 460 (**35.6x**), circuit 16,384 -> 128, params_trim 16,909,824 -> 769,887 (**22.0x**), layers 1 -> 17, compile 156.9 -> 4.8 s.
+  - kogge_stone at w=7: units 16,384 -> 508 (**32.3x**), circuit 16,384 -> 176, params_trim 16,909,824 -> 840,225 (**20.1x**), layers 1 -> 9, compile 156.9 -> 4.1 s.
+- ripple_kpg at w=10: 2,376 units (circuit 152, decode 2,184, encode 40), 15 layers, d_trim 4,340, p_trim 29,525,020, compile 79.3 s.
+- ripple_pair at w=10: 2,412 units (circuit 188, decode 2,184, encode 40), 15 layers, d_trim 4,349, p_trim 29,899,375, compile 82.5 s.
+- ripple_bits at w=10: 2,412 units (circuit 188, decode 2,184, encode 40), 24 layers, d_trim 4,367, p_trim 30,023,125, compile 163.2 s.
+- kogge_stone at w=10: 2,520 units (circuit 296, decode 2,184, encode 40), 11 layers, d_trim 4,388, p_trim 31,115,308, compile 76.9 s.
+
+## Growth fits (least squares over the compiled widths)
+
+| method | widths | units log2-slope | circuit log2-slope | circuit units ~ a*x + b | params_trim log2-slope | compile_s log2-slope | layers |
+|---|---|---|---|---|---|---|---|
+| lookup | 2..7 | 2.00 | 2.00 | 2705.8*w + -8536.2 (max resid 5979.4) | 2.92 | 1.02 | [1, 1, 1, 1, 1, 1] |
+| ripple_kpg | 2..10 | 0.70 | 0.31 | 16.0*w + -8.0 (max resid 0.0) | 1.58 | 0.48 | [5, 6, 8, 9, 10, 11, 13, 14, 15] |
+| ripple_pair | 2..10 | 0.68 | 0.32 | 20.0*w + -12.0 (max resid 0.0) | 1.56 | 0.56 | [5, 6, 8, 9, 10, 11, 13, 14, 15] |
+| ripple_bits | 2..10 | 0.68 | 0.32 | 20.0*w + -12.0 (max resid 0.0) | 1.55 | 0.59 | [6, 8, 11, 13, 15, 17, 20, 22, 24] |
+| kogge_stone | 2..10 | 0.70 | 0.42 | 8.6*w*log2(w) + 6.6 (max resid 4.0) | 1.58 | 0.49 | [5, 6, 8, 8, 9, 9, 10, 10, 11] |
+
+A log2-slope s means the quantity grows like 2^(s w): 2 is the 4^w of a two-operand table, 1 the 2^w of a w-bit output.
+
+Plot: experiments/bit_arith/bit_arith.png. Total wall time 1407 s.
