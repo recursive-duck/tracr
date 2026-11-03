@@ -33,6 +33,21 @@ _COMPILABLE_SOP_TYPES = (
 )
 
 
+def and_terms(selector: rasp.Selector) -> list[rasp.Select] | None:
+  """The Selects of a Select or an AND of Selects; None for other selectors.
+
+  An AND compiles to one attention head whose score is the number of true
+  predicates, so a key-query pair is selected only when all of them hold.
+  """
+  if isinstance(selector, rasp.Select):
+    return [selector]
+  if isinstance(selector, rasp.SelectorAnd):
+    fst, snd = and_terms(selector.fst), and_terms(selector.snd)
+    if fst is not None and snd is not None:
+      return fst + snd
+  return None
+
+
 @dataclasses.dataclass
 class TracrUnsupportedExpr:
   """An uncompilable expression and the reason it's not compilable."""
@@ -67,15 +82,15 @@ def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
     if sop_reason:
       return TracrUnsupportedExpr(expr=expr, reason=sop_reason)
 
-  if isinstance(expr, rasp.Selector) and not isinstance(expr, rasp.Select):
+  if isinstance(expr, rasp.Selector) and and_terms(expr) is None:
     reason = (
-        f"{type(expr).__name__} is not compilable: only rasp.Select is"
-        " supported as a selector."
+        f"{type(expr).__name__} is not compilable: only rasp.Select and ANDs"
+        " of Selects are supported as selectors."
     )
-    if isinstance(expr, (rasp.SelectorAnd, rasp.SelectorOr, rasp.SelectorNot)):
+    if isinstance(expr, (rasp.SelectorOr, rasp.SelectorNot)):
       reason += (
-          " Compound selectors compile only if simplification reduces them to"
-          " a single Select."
+          " SelectorOr and SelectorNot compile only if simplification reduces"
+          " them to a single Select."
       )
     return TracrUnsupportedExpr(expr=expr, reason=reason)
 
@@ -101,21 +116,21 @@ def _static_validate_expr(expr: rasp.RASPExpr) -> TracrUnsupportedExpr | None:
       )
 
   if isinstance(expr, rasp.SelectorWidth):
-    if not isinstance(expr.selector, rasp.Select):
+    if and_terms(expr.selector) is None:
       return TracrUnsupportedExpr(
           expr=expr,
           reason=(
-              "SelectorWidth's selector must be a rasp.Select, got"
+              "SelectorWidth's selector must be a rasp.Select or an AND of them, got"
               f" {type(expr.selector).__name__}."
           ),
       )
 
   if isinstance(expr, rasp.Aggregate):
-    if not isinstance(expr.selector, rasp.Select):
+    if and_terms(expr.selector) is None:
       return TracrUnsupportedExpr(
           expr=expr,
           reason=(
-              "Aggregate's selector must be a rasp.Select, got"
+              "Aggregate's selector must be a rasp.Select or an AND of them, got"
               f" {type(expr.selector).__name__}."
           ),
       )

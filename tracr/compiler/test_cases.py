@@ -246,6 +246,34 @@ TEST_CASES = UNIVERSAL_TEST_CASES + [
         max_seq_len=5,
     ),
     dict(
+        testcase_name="selector_width_and",
+        program=rasp.SelectorWidth(
+            rasp.selector_and(
+                rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.EQ),
+                rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.LT),
+                simplify=False,
+            )),
+        vocab={1, 2, 3},
+        test_input=[1, 2, 1, 1, 2],
+        expected_output=[0, 0, 1, 2, 1],
+        max_seq_len=5,
+    ),
+    dict(
+        testcase_name="aggregate_and",
+        program=rasp.Aggregate(
+            rasp.selector_and(
+                rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.LEQ),
+                rasp.Select(rasp.indices, rasp.indices,
+                            lambda key, query: key == query + 1),
+                simplify=False,
+            ),
+            rasp.Map(lambda x: x + 10, rasp.tokens)),
+        vocab={1, 2, 3},
+        test_input=[2, 3, 1, 3, 3],
+        expected_output=[None, 11, None, 13, None],
+        max_seq_len=5,
+    ),
+    dict(
         testcase_name="sort_unique_1",
         program=lib.make_sort_unique(vals=rasp.tokens, keys=rasp.tokens),
         vocab={1, 2, 3, 4},

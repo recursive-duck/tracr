@@ -25,7 +25,7 @@ from typing_extensions import Protocol
 class QueryKeyToAttnLogit(Protocol):
 
   def __call__(self, query: bases.BasisDirection,
-               key: bases.BasisDirection) -> bool:
+               key: bases.BasisDirection) -> float:
     pass
 
 
@@ -42,6 +42,7 @@ def categorical_attn(
     always_attend_to_bos: bool = False,
     use_bos_for_default_output: bool = True,
     softmax_coldness: float = 100.,
+    max_logit: float = 1.,
 ) -> transformers.AttentionHead:
   """Returns an attention head for categorical inputs.
 
@@ -71,6 +72,10 @@ def categorical_attn(
       in the value space, and map it to the output space like any other token.
     softmax_coldness: The inverse temperature of the softmax. Default value is
       high which makes the attention close to a hard maximum.
+    max_logit: The value attn_fn sums to on a selected key-query pair. It is 1
+      for one predicate; an AND of n predicates scores n. BOS scores max_logit
+      (always attended) or max_logit - 0.5, so a pair that misses even one
+      predicate (at most max_logit - 1) never beats it.
   """
   bases.ensure_dims(bos_space, num_dims=1, name="bos_space")
   bases.ensure_dims(one_space, num_dims=1, name="one_space")
@@ -141,7 +146,7 @@ def categorical_attn(
     # the BOS token is always attended to in addition to whatever else.
 
     if key == bos_direction and query == one_direction:
-      c = 1. if always_attend_to_bos else 0.5
+      c = max_logit if always_attend_to_bos else max_logit - 0.5
       return c * softmax_coldness
     elif {key, query}.intersection({one_direction, bos_direction}):
       return 0

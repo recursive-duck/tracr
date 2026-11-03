@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional
 
 import networkx as nx
 from tracr.compiler import nodes
+from tracr.compiler import validating
 from tracr.craft import bases
 from tracr.craft.chamber import categorical_attn
 from tracr.craft.chamber import categorical_mlp
@@ -41,18 +42,47 @@ def _transform_fun_to_basis_fun(
   return bases_fun
 
 
-def _check_selector_expression(expr, graph):
-  """Check graph structure and encodings for an aggregate or selector width."""
+def _selector_attention(expr, graph):
+  """Query space, key space, score function and selected score of a selector.
+
+  `expr` is an Aggregate or SelectorWidth whose selector is a Select or an AND
+  of Selects. The score of a query-key pair is the number of predicates that
+  hold on it; each Select adds its predicate on the directions of its own
+  query and key S-Ops, so pairs of other S-Ops add nothing.
+  """
   sel_expr = expr.selector
-
-  # Check graph structure
   assert sel_expr.label in graph.predecessors(expr.label)
-  assert sel_expr.keys.label in graph.predecessors(sel_expr.label)
-  assert sel_expr.queries.label in graph.predecessors(sel_expr.label)
+  terms = validating.and_terms(sel_expr)
+  if terms is None:
+    raise NotImplementedError(
+        "Only a Select or an AND of Selects compiles; got "
+        f"{type(sel_expr).__name__}.")
+  for term in terms:
+    assert term.keys.label in graph.predecessors(term.label)
+    assert term.queries.label in graph.predecessors(term.label)
+    if (not rasp.is_categorical(term.queries) or
+        not rasp.is_categorical(term.keys)):
+      raise NotImplementedError(
+          "Selector keys and queries must be categorical.")
 
-  if (not rasp.is_categorical(sel_expr.queries) or
-      not rasp.is_categorical(sel_expr.keys)):
-    raise NotImplementedError("Selector keys and queries must be categorical.")
+  def space(sops):
+    labels = list(dict.fromkeys(sop.label for sop in sops))
+    return bases.join_vector_spaces(*(bases.VectorSpaceWithBasis(
+        graph.nodes[label][nodes.OUTPUT_BASIS]) for label in labels))
+
+  query_space = space([term.queries for term in terms])
+  key_space = space([term.keys for term in terms])
+  predicates = [(term.queries.label, term.keys.label, term.predicate)
+                for term in terms]
+
+  # Argument order is different in craft / transformers than RASP selectors.
+  def attn_basis_fn(query: bases.BasisDirection,
+                    key: bases.BasisDirection) -> float:
+    return sum(float(predicate(key.value, query.value))
+               for q_label, k_label, predicate in predicates
+               if query.name == q_label and key.name == k_label)
+
+  return query_space, key_space, attn_basis_fn, float(len(terms))
 
 
 def add_craft_components_to_rasp_graph(
@@ -186,18 +216,11 @@ def add_craft_components_to_rasp_graph(
             one_space=one_space,
             hidden_name=f"_hidden_{expr.label}_")
     elif isinstance(expr, rasp.Aggregate):
-      sel_expr: rasp.Select = expr.selector
       agg_expr: rasp.Aggregate = expr
-
-      if not isinstance(sel_expr, rasp.Select):
-        raise TypeError("Compiling composite Selectors is not supported. "
-                        f"Got a {sel_expr}.")
-
-      queries = graph.nodes[sel_expr.queries.label]
-      keys = graph.nodes[sel_expr.keys.label]
       sop = graph.nodes[agg_expr.sop.label]
 
-      _check_selector_expression(expr, graph)
+      query_space, key_space, attn_basis_fn, max_logit = (
+          _selector_attention(expr, graph))
       assert agg_expr.sop.label in graph.predecessors(node_id)
       if rasp.get_encoding(agg_expr.sop) != rasp.get_encoding(agg_expr):
         raise NotImplementedError(
@@ -218,19 +241,8 @@ def add_craft_components_to_rasp_graph(
 
       bos_space = bases.VectorSpaceWithBasis([bos_dir])
       one_space = bases.VectorSpaceWithBasis([one_dir])
-      query_space = bases.VectorSpaceWithBasis(queries[nodes.OUTPUT_BASIS])
-      key_space = bases.VectorSpaceWithBasis(keys[nodes.OUTPUT_BASIS])
       value_space = bases.VectorSpaceWithBasis(sop[nodes.OUTPUT_BASIS])
       output_space = bases.VectorSpaceWithBasis(node[nodes.OUTPUT_BASIS])
-
-      # Argument order is different in craft / transformers than RASP selectors
-      def attn_basis_fn(query: bases.BasisDirection,
-                        key: bases.BasisDirection) -> bool:
-        # It's okay to use the local variable sel_expr because this function is
-        # only used within the same loop iteration to create an attention head.
-        # pylint: disable=cell-var-from-loop
-        selector_basis_fn = _transform_fun_to_basis_fun(sel_expr.predicate)
-        return selector_basis_fn(key, query)
 
       block = categorical_attn.categorical_attn(
           query_space=query_space,
@@ -244,25 +256,13 @@ def add_craft_components_to_rasp_graph(
           causal=causal,
           always_attend_to_bos=False,
           use_bos_for_default_output=True,
-          softmax_coldness=100)
+          softmax_coldness=100,
+          max_logit=max_logit)
     elif isinstance(expr, rasp.SelectorWidth):
-      sel_expr = expr.selector
-      queries = graph.nodes[sel_expr.queries.label]
-      keys = graph.nodes[sel_expr.keys.label]
-      _check_selector_expression(expr, graph)
-
+      query_space, key_space, attn_basis_fn, max_logit = (
+          _selector_attention(expr, graph))
       bos_space = bases.VectorSpaceWithBasis([bos_dir])
-      query_space = bases.VectorSpaceWithBasis(queries[nodes.OUTPUT_BASIS])
-      key_space = bases.VectorSpaceWithBasis(keys[nodes.OUTPUT_BASIS])
       output_space = bases.VectorSpaceWithBasis(node[nodes.OUTPUT_BASIS])
-
-      # Argument order is different in craft / transformers than RASP selectors
-      def attn_basis_fn(query: bases.BasisDirection,
-                        key: bases.BasisDirection) -> bool:
-        # It's okay to use the local variable sel_expr because this function is
-        # only used within the same loop iteration to create an attention head.
-        selector_basis_fn = _transform_fun_to_basis_fun(sel_expr.predicate)  # pylint: disable=cell-var-from-loop
-        return selector_basis_fn(key, query)
 
       block = selector_width.selector_width(
           query_space=query_space,
@@ -276,7 +276,8 @@ def add_craft_components_to_rasp_graph(
           causal=False,
           softmax_coldness=100,
           mlp_large_number=mlp_exactness,
-          label=expr.label)
+          label=expr.label,
+          max_logit=max_logit)
     else:
       raise NotImplementedError(f"Expression {expr} cannot be translated to "
                                 "a model component.")

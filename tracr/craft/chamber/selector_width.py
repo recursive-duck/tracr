@@ -35,6 +35,7 @@ def selector_width(
     softmax_coldness: float = 100.,
     mlp_large_number: float = 100.,
     label: str = "",
+    max_logit: float = 1.,
 ) -> transformers.SeriesWithResiduals:
   """Returns a craft block implementing RASP's SelectorWidth primitive.
 
@@ -66,6 +67,7 @@ def selector_width(
       high which makes the attention close to a hard maximum.
     mlp_large_number: A larger number makes the MLP more accurate.
     label: A name for this block, used to label auxiliary dimensions.
+    max_logit: Value of attn_fn on a selected pair; see categorical_attn.
   """
   assert output_space.num_dims == 1 or categorical_output
 
@@ -85,7 +87,8 @@ def selector_width(
       causal=causal,
       always_attend_to_bos=True,
       use_bos_for_default_output=False,
-      softmax_coldness=softmax_coldness)
+      softmax_coldness=softmax_coldness,
+      max_logit=max_logit)
 
   fun = lambda x: round((1 / x) - 1)
   in_value_set = {1 / (out_v + 1) for out_v in out_value_set}

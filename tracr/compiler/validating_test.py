@@ -22,14 +22,6 @@ from tracr.compiler import validating
 from tracr.rasp import rasp
 
 
-def _unsimplified_and_selector():
-  return rasp.selector_and(
-      rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.EQ),
-      rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.EQ),
-      simplify=False,
-  )
-
-
 def _unsimplified_not_selector():
   return rasp.selector_not(
       rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.EQ),
@@ -50,12 +42,13 @@ _UNCOMPILABLE_PROGRAMS = [
         program=rasp.Map(lambda x: x, rasp.length),
     ),
     dict(
-        testcase_name="aggregate_with_unsimplified_and_selector",
-        program=rasp.Aggregate(_unsimplified_and_selector(), rasp.tokens),
-    ),
-    dict(
-        testcase_name="selector_width_with_unsimplified_and_selector",
-        program=rasp.SelectorWidth(_unsimplified_and_selector()),
+        testcase_name="selector_width_with_and_of_not_selector",
+        program=rasp.SelectorWidth(
+            rasp.selector_and(
+                rasp.Select(rasp.indices, rasp.indices, rasp.Comparison.LT),
+                _unsimplified_not_selector(),
+                simplify=False,
+            )),
     ),
     dict(
         testcase_name="aggregate_with_or_selector",
