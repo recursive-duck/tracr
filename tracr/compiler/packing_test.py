@@ -175,7 +175,11 @@ class PackTest(parameterized.TestCase):
     models = [_compiled(n)[0] for n in names]
     plain = packing.pack(models, names, rebalance=False)
     balanced = packing.pack(models, names, rebalance=True)
-    self.assertLess(balanced.stats.max_weight, plain.stats.max_weight)
+    # Rebalancing rescales MLP units only; attention weights are unchanged.
+    def mlp_max(packed):
+      return max(float(np.abs(w).max()) for l in packed.layers
+                 for w in (l.w1, l.w2))
+    self.assertLess(mlp_max(balanced), mlp_max(plain))
     for i, name in enumerate(names):
       with self.subTest(name):
         inputs = shrinking_test._all_inputs(_compiled(name)[1], _MAX_SEQ_LEN)

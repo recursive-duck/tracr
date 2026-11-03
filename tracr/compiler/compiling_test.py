@@ -52,6 +52,28 @@ class ValueSizeLargerThanKeySizeTest(parameterized.TestCase):
         self.assertEqual(actual, program(test_input))
 
 
+class AttentionLogitScaleTest(parameterized.TestCase):
+  """Compiled logits must equal coldness * craft score at any key size."""
+
+  @parameterized.parameters(3, 40)
+  def test_logits_match_craft_scores(self, vocab_size):
+    coldness, bos_score, match_score = 100., 0.5, 1.
+    program = rasp.Aggregate(
+        rasp.Select(rasp.tokens, rasp.tokens, rasp.Comparison.EQ),
+        rasp.tokens)
+    model = compiling.compile_rasp_to_model(
+        program, set(range(vocab_size)), max_seq_len=3)
+    self.assertGreater(model.model_config.key_size, 1)
+    test_input = [0, 1, vocab_size - 1]
+    out = model.apply([compiling.COMPILER_BOS] + test_input)
+    logits = np.asarray(out.attn_logits[0])[0, 0]
+    for query in range(1, len(test_input) + 1):
+      self.assertAlmostEqual(
+          float(logits[query, 0]), coldness * bos_score, places=3)
+      self.assertAlmostEqual(
+          float(logits[query, query]), coldness * match_score, places=3)
+
+
 _VOCAB = {1, 2, 3}
 _MAX_SEQ_LEN = 5
 _TEST_BOS = "compiling_test_BOS"

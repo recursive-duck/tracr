@@ -299,11 +299,16 @@ def assemble_craft_model(
           module.snd.matrix @ snd_output_to_residual)
     else:  # Attention module
       query, key, value, linear = [], [], [], []
+      # The attention layer divides logits by sqrt(key_size); scale the query
+      # back so the logits equal the craft scores. Without it the softmax
+      # coldness shrinks with key_size, e.g. 100 -> 3.1 at key_size 1,024.
+      logit_scale = np.sqrt(model_config.key_size)
       for head in module.as_multi().heads():
         key_size = head.w_qk.matrix.shape[1]
         query_mat = np.zeros((residual_space.num_dims, model_config.key_size))
         residual_to_query = project(head.w_qk.left_space)
-        query_mat[:, :key_size] = residual_to_query @ head.w_qk.matrix
+        query_mat[:, :key_size] = (
+            logit_scale * (residual_to_query @ head.w_qk.matrix))
         query.append(query_mat)
 
         key_mat = np.zeros((residual_space.num_dims, model_config.key_size))
