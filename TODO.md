@@ -2,9 +2,12 @@
 
 ## Backlog
 
+- llm-shapes: RMSNorm-safe codes, RoPE positions, uniform head size, bf16 audit @scale-to-llm [feature] #architecture #precision #llm
+- id-codes: ID tokens embed and unembed as fixed bit codes shared with the DB keys; no ID embedding table @scale-to-llm [feature] #ids #encoding #tools
+- exact-copy: Compiled head that copies a multi-token ID from a tool result verbatim @bit-encoding [feature] #copy #ids #attention
+- hybrid-train: Frozen compiled modules inside trainable layers; check training leaves them exact @llm-shapes [experiment] #training #modules #exactness
 - bit-count: Exact counting that outputs bits, without N decode units or 1/N^2 resolution @scale-to-llm [experiment] #counting #precision #research
 - compiler-symbolic: Symbolic value sets and vectorized matrix building; Python loops are O(m) to O(m^2) per op @scale-to-llm [perf] #compiler #runtime #scaling
-- llm-shapes: RMSNorm-safe codes, RoPE positions, uniform head size, bf16 audit @scale-to-llm [feature] #architecture #precision #llm
 
 ## In Progress
 
