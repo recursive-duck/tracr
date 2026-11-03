@@ -218,6 +218,7 @@ def assemble_craft_model(
     output_space: bases.VectorSpaceWithBasis,
     categorical_output: bool,
     causal: bool = False,
+    pad_token: Optional[int] = None,
 ) -> AssembledTransformerModel:
   """Assembles the given components into a Haiku model with parameters.
 
@@ -230,6 +231,9 @@ def assemble_craft_model(
     categorical_output: Whether the output is categorical. If True, we take an
       argmax when unembedding.
     causal: Whether to output a causally-masked model.
+    pad_token: Id of the PAD token in the input encoding. If given, attention
+      does not attend to input positions holding this id. If None, no
+      positions are masked.
 
   Returns:
     An AssembledTransformerModel that contains the model and parameters of the
@@ -260,7 +264,8 @@ def assemble_craft_model(
         token_embed=embed_modules.token_embed,
         position_embed=embed_modules.pos_embed,
         unembed=embed_modules.unembed,
-        use_unembed_argmax=categorical_output)
+        use_unembed_argmax=categorical_output,
+        pad_token=pad_token)
 
   @hk.without_apply_rng
   @hk.transform

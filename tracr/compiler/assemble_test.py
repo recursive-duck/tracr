@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for transformer.assemble."""
 
+import inspect
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import haiku as hk
@@ -114,6 +116,12 @@ class AssembleTest(parameterized.TestCase):
     params = unembed.init(jax.random.PRNGKey(0), embeddings)
     tokens = unembed.apply(params, embeddings)
     np.testing.assert_allclose(tokens, expected_tokens)
+
+  def test_pad_token_is_optional_in_assemble_craft_model(self):
+    # Existing callers do not pass a pad token and must keep working (unmasked).
+    signature = inspect.signature(assemble.assemble_craft_model)
+    self.assertIn("pad_token", signature.parameters)
+    self.assertIsNone(signature.parameters["pad_token"].default)
 
 
 if __name__ == "__main__":

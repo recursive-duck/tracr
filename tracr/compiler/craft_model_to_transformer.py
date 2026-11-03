@@ -55,6 +55,14 @@ def craft_model_to_transformer(
   categorical_output = rasp.is_categorical(sink[nodes.EXPR])
   output_space = bases.VectorSpaceWithBasis(sink[nodes.OUTPUT_BASIS])
 
+  input_encoder = encoder.CategoricalEncoder(
+      basis=tokens_space.basis,
+      enforce_bos=compiler_bos is not None,
+      bos_token=compiler_bos,
+      pad_token=compiler_pad,
+      max_seq_len=max_seq_len + 1 if compiler_bos is not None else max_seq_len,
+  )
+
   assembled_model = assemble.assemble_craft_model(
       craft_model=craft_model,
       tokens_space=tokens_space,
@@ -62,15 +70,11 @@ def craft_model_to_transformer(
       output_space=output_space,
       categorical_output=categorical_output,
       causal=causal,
+      # Mask PAD positions; the id must match the one the encoder emits.
+      pad_token=input_encoder.pad_encoding,
   )
 
-  assembled_model.input_encoder = encoder.CategoricalEncoder(
-      basis=tokens_space.basis,
-      enforce_bos=compiler_bos is not None,
-      bos_token=compiler_bos,
-      pad_token=compiler_pad,
-      max_seq_len=max_seq_len + 1 if compiler_bos is not None else max_seq_len,
-  )
+  assembled_model.input_encoder = input_encoder
 
   if categorical_output:
     assembled_model.output_encoder = encoder.CategoricalEncoder(
