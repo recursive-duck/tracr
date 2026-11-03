@@ -71,3 +71,21 @@ compiler_bos = "BOS"
 workers = 3
 timeout_s = 1800
 out_dir = "experiments/bitsplit_compare"
+
+[bit_encoding]
+# One-hot vs binary tokens/indices (and every S-Op) on EQ-based programs.
+programs = ["agg_eq", "map_lookup", "hist"]
+encodings = ["categorical", "binary"]
+# V = N for every size.
+sizes = [256, 1_024, 4_096]
+# Random inputs per config, lengths uniform in 1..N.
+samples = 200
+seed = 0
+compiler_bos = "BOS"
+# A size is dropped only if its compile does not finish in this time.
+compile_timeout_s = 600
+# Hard limit for one child (compile + shrink + evaluation).
+child_timeout_s = 3600
+# Processes computing the RASP reference outputs.
+rasp_workers = 3
+out_dir = "experiments/bit_encoding"
