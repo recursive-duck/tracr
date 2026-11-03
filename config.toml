@@ -52,3 +52,22 @@ tie_tol = 1e-5
 heavy_n = 32
 heavy_workers = 3
 out_dir = "experiments/pack_report"
+
+[bitsplit_compare]
+# lib.make_sort / make_sort_freq ("lib") against the bit-split programs in
+# tracr/compiler/lib_bits.py, with the per-level counts summed numerically
+# ("bits_num") or by categorical SequenceMaps ("bits_cat").
+programs = ["sort", "sort_freq"]
+forms = ["lib", "bits_num", "bits_cat"]
+# [vocab size V, max_seq_len N]; tokens are 0 .. V - 1.
+configs = [[32, 8], [64, 8], [128, 8], [256, 8], [16, 16], [32, 32]]
+# Random inputs per config, lengths uniform in 1..N; compiled outputs are
+# compared with rasp.evaluate of the same program, and the bit-split RASP
+# outputs with the lib program's.
+samples = 200
+seed = 0
+compiler_bos = "BOS"
+# One process per (program, form, V, N); other jobs share the laptop.
+workers = 3
+timeout_s = 1800
+out_dir = "experiments/bitsplit_compare"
